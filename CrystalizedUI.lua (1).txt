@@ -468,6 +468,7 @@ end
 
 -- Makes `frame` draggable by dragging `handle` (mouse + touch)
 local function MakeDraggable(handle, frame)
+	if not handle or not frame then return end
 	local dragging, dragInput, dragStart, startPos = false, nil, nil, nil
 	local totalDrag = 0
 	handle.InputBegan:Connect(function(input)
@@ -3072,8 +3073,6 @@ function Crystalized:CreateWindow(options)
 			main.Position.Y.Scale, main.Position.Y.Offset + 4)
 		mainShadow.Size = UDim2.new(0, (main.Size.X.Offset + 24) * s, 0, (main.Size.Y.Offset + 24) * s)
 	end)
-
-	MakeDraggable(topbar, main)
 
 	-------------------- Topbar --------------------
 	local topbar = Create("Frame", {
