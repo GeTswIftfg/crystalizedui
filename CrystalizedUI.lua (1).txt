@@ -1,17 +1,17 @@
 --[[
-╔════════════════════════════════════════════════════════════╗
-║              CRYSTALIZED UI LIBRARY  v1.0.0               ║
-║              .gg/crystalized                              ║
-╠════════════════════════════════════════════════════════════╣
-║  A full-featured script hub UI library for Roblox.        ║
-║                                                            ║
-║  HOW TO LOAD (from your executor):                        ║
-║  local Crystalized = loadstring(game:HttpGet(             ║
-║      "https://raw.githubusercontent.com/YOU/REPO/main/CrystalizedUI.lua"
-║  ))()                                                      ║
-║                                                            ║
-║  Then check example.lua for a full tour of every feature. ║
-╚════════════════════════════════════════════════════════════╝
+â•”â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•—
+â•‘              CRYSTALIZED UI LIBRARY  v1.0.0               â•‘
+â•‘              .gg/crystalized                              â•‘
+â• â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•£
+â•‘  A full-featured script hub UI library for Roblox.        â•‘
+â•‘                                                            â•‘
+â•‘  HOW TO LOAD (from your executor):                        â•‘
+â•‘  local Crystalized = loadstring(game:HttpGet(             â•‘
+â•‘      "https://raw.githubusercontent.com/GeTswIftfg/crystalizedui/refs/heads/main/CrystalizedUI.lua%20(1).txt"
+â•‘  ))()                                                      â•‘
+â•‘                                                            â•‘
+â•‘  Then check example.lua for a full tour of every feature. â•‘
+â•šâ•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 ]]
 
 --============================================================--
@@ -41,7 +41,7 @@ Crystalized._profile  = {}            -- rolling {Src,Ms} samples when Debug is 
 -- print/show a tiny profiler summary: slowest + average callback times
 function Crystalized:DebugReport()
 	if #self._profile == 0 then
-		self:Notify({ Title = "Profiler", Content = "No samples yet — toggle Debug on and click around", Duration = 3 })
+		self:Notify({ Title = "Profiler", Content = "No samples yet â€” toggle Debug on and click around", Duration = 3 })
 		return
 	end
 	local sum, worst, wsrc = 0, 0, "?"
@@ -53,7 +53,7 @@ function Crystalized:DebugReport()
 	print(string.format("[Crystalized] Profiler: %d samples, avg %.2fms, worst %.1fms (%s)",
 		#self._profile, avg, worst, wsrc))
 	self:Notify({ Title = "Profiler", Type = worst > 16 and "warn" or "success",
-		Content = string.format("%d samples · avg %.1fms · worst %.1fms", #self._profile, avg, worst),
+		Content = string.format("%d samples Â· avg %.1fms Â· worst %.1fms", #self._profile, avg, worst),
 		Duration = 4 })
 end
 Crystalized._paints   = {}            -- theme registry: {i=instance, p=property, r=role, a=alpha}
@@ -90,7 +90,7 @@ local BaseThemes = {
 		SubText    = Color3.fromRGB(104, 106, 120),
 		ToggleOff  = Color3.fromRGB(206, 208, 222),
 	},
-	-- extra named themes (Settings → Theme dropdown)
+	-- extra named themes (Settings â†’ Theme dropdown)
 	Midnight = {
 		Background = Color3.fromRGB(7, 11, 20),
 		Topbar     = Color3.fromRGB(11, 18, 32),
@@ -151,7 +151,7 @@ Crystalized.Accents = {
 }
 
 -- Genuine icons (lucide vector set, zero emojis). Use CreateTab({ Icon = "swords" })
--- or any element that takes an icon — a raw "rbxassetid://..." string works too.
+-- or any element that takes an icon â€” a raw "rbxassetid://..." string works too.
 -- (more names can be added the same way; ids from the public lucide-roblox map)
 Crystalized.Icons = {
 	["home"]="rbxassetid://10723407389", ["sword"]="rbxassetid://10734975486",
@@ -454,7 +454,7 @@ local function Fire(fn, ...)
 		local ok, err = pcall(fn, table.unpack(args))
 		local ms = (os.clock() - t0) * 1000
 		-- lightweight callback profiler (per answer 24): enable with
-		-- Crystalized.Debug = true → slow callbacks get flagged in the console,
+		-- Crystalized.Debug = true â†’ slow callbacks get flagged in the console,
 		-- and Crystalized:DebugReport() prints averages.
 		if Crystalized.Debug then
 			local p = Crystalized._profile
@@ -821,7 +821,7 @@ end
 -- Crystalized:Notify({ Title, Content, Type, Duration })
 function Crystalized:Notify(opts)
 	opts = opts or {}
-	if notifActive >= NOTIF_CAP then -- stack is full → wait your turn
+	if notifActive >= NOTIF_CAP then -- stack is full â†’ wait your turn
 		table.insert(notifQueue, opts)
 		return
 	end
@@ -897,7 +897,7 @@ local function ShowCloseConfirm()
 end
 
 --============================================================--
--- WATERMARK (top-right: name • fps • ping -- always visible)
+-- WATERMARK (top-right: name â€¢ fps â€¢ ping -- always visible)
 --============================================================--
 local Watermark = Create("Frame", {
 	Name = "Watermark", AnchorPoint = Vector2.new(1, 0), AutomaticSize = Enum.AutomaticSize.X, ZIndex = 5,
@@ -925,7 +925,7 @@ local wmName = Create("TextLabel", {
 Paint(wmName, "TextColor3", "Text")
 local wmStats = Create("TextLabel", {
 	AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0), BackgroundTransparency = 1,
-	Font = Enum.Font.GothamMedium, TextSize = 11, Text = "60 FPS  •  0 ms", LayoutOrder = 3, Parent = Watermark,
+	Font = Enum.Font.GothamMedium, TextSize = 11, Text = "60 FPS  â€¢  0 ms", LayoutOrder = 3, Parent = Watermark,
 })
 Paint(wmStats, "TextColor3", "SubText")
 MakeDraggable(Watermark, Watermark) -- drag the watermark anywhere (per request)
@@ -982,7 +982,7 @@ local function RefreshBindPanel()
 			Size = UDim2.new(0, 44, 1, 0), BackgroundTransparency = 1,
 			Font = Enum.Font.GothamSemibold, TextSize = 11,
 			TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.X,
-			Text = (bind.Key and bind.Key.Name or "None") .. (bind.Mode == "Hold" and " ⩒" or ""), Parent = row,
+			Text = (bind.Key and bind.Key.Name or "None") .. (bind.Mode == "Hold" and " â©’" or ""), Parent = row,
 		})
 		Paint(key, "TextColor3", active and "Accent" or "Text")
 	end
@@ -1031,7 +1031,7 @@ local pillText = Create("TextLabel", {
 Paint(pillText, "TextColor3", "Text")
 Crystalized._pillText = pillText
 
--- the pill has NO close ✕ (it cluttered the dock) — right-click/hold instead
+-- the pill has NO close âœ• (it cluttered the dock) â€” right-click/hold instead
 Pill.InputBegan:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton2 then
 		reopenSuppressUntil = os.clock() + 1
@@ -1110,7 +1110,7 @@ local function SetBindMode(bind, mode)
 end
 
 --============================================================--
--- BIND MODE MENU (the little ⚙ next to keybind chips:
+-- BIND MODE MENU (the little âš™ next to keybind chips:
 -- "PRESS to activate" default / "HOLD to activate")
 --============================================================--
 local bindModeMenu = nil
@@ -1293,7 +1293,7 @@ function Crystalized:LoadConfig(name)
 	self:Notify({ Title = "Config", Content = "Loaded config \"" .. name .. "\"", Duration = 2 })
 end
 
--- shareable config codes (per answer 19): export → clipboard code, import → paste.
+-- shareable config codes (per answer 19): export â†’ clipboard code, import â†’ paste.
 -- base64, hand-rolled (no external deps, Luraph-safe)
 local B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 local function B64Encode(data)
@@ -1350,7 +1350,7 @@ function Crystalized:ExportConfigCode(name)
 	local code = "CRYS1-" .. B64Encode(json)
 	if type(setclipboard) == "function" then
 		pcall(setclipboard, code)
-		self:Notify({ Title = "Config", Type = "success", Content = "Code for \"" .. name .. "\" copied — paste it to anyone", Duration = 4 })
+		self:Notify({ Title = "Config", Type = "success", Content = "Code for \"" .. name .. "\" copied â€” paste it to anyone", Duration = 4 })
 	end
 	return code
 end
@@ -1433,7 +1433,7 @@ end
 --============================================================--
 Crystalized.IsPremium   = false
 Crystalized._premiumEls = {}
-Crystalized.PremiumKeys = { "crystal123" }              -- ◀ REPLACE with your real keys
+Crystalized.PremiumKeys = { "crystal123" }              -- â—€ REPLACE with your real keys
 Crystalized.BuyLink     = "discord.gg/crystalized"      -- where BUY sends people
 Crystalized.DiscordInvite = "discord.gg/crystalized"    -- sidebar footer chip copies this
 
@@ -1460,7 +1460,7 @@ function Crystalized:UnlockPremium(key)
 	if self.PremiumGold ~= false then
 		pcall(function() self:SetAccent("Gold") end)
 		self:Notify({ Title = "Premium", Type = "success",
-			Content = "Unlocked — the hub is wearing gold now", Duration = 4 })
+			Content = "Unlocked â€” the hub is wearing gold now", Duration = 4 })
 	else
 		self:Notify({ Title = "Premium", Type = "success",
 			Content = "Unlocked! Gold features are live", Duration = 4 })
@@ -1496,7 +1496,7 @@ local function ShowPremiumPrompt(featureName)
 		Create("UICorner", { CornerRadius = UDim.new(0, 6) }),
 		Create("TextLabel", {
 			Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Rotation = -45,
-			Font = Enum.Font.GothamBold, TextSize = 15, Text = "★",
+			Font = Enum.Font.GothamBold, TextSize = 15, Text = "â˜…",
 			TextColor3 = Color3.fromRGB(46, 33, 6), ZIndex = 93,
 		}),
 	})
@@ -1510,7 +1510,7 @@ local function ShowPremiumPrompt(featureName)
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 72), AutomaticSize = Enum.AutomaticSize.X,
 		Size = UDim2.new(0, 0, 0, 20), BackgroundTransparency = 1,
-		Font = Enum.Font.GothamSemibold, TextSize = 11, Text = "PROTECTED  •  " .. tostring(featureName),
+		Font = Enum.Font.GothamSemibold, TextSize = 11, Text = "PROTECTED  â€¢  " .. tostring(featureName),
 		TextColor3 = Theme.Gold, ZIndex = 92, Parent = card,
 	}, {
 		Create("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }),
@@ -1560,7 +1560,7 @@ local function ShowPremiumPrompt(featureName)
 	local buyBtn = Create("TextButton", {
 		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 22, 1, -18),
 		Size = UDim2.new(0.5, -27, 0, 34),
-		Text = "Buy Key  →", Font = Enum.Font.GothamBold, TextSize = 13,
+		Text = "Buy Key  â†’", Font = Enum.Font.GothamBold, TextSize = 13,
 		BackgroundColor3 = Theme.Gold, TextColor3 = Color3.fromRGB(46, 33, 6),
 		AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 92, Parent = card,
 	}, { Create("UICorner", { CornerRadius = UDim.new(0, 8) }) })
@@ -1572,10 +1572,10 @@ local function ShowPremiumPrompt(featureName)
 	}, { Create("UICorner", { CornerRadius = UDim.new(0, 8) }) })
 	Paint(redeemBtn, "BackgroundColor3", "Accent")
 
-	-- tiny ✕ in the corner as the obvious dismiss
+	-- tiny âœ• in the corner as the obvious dismiss
 	local xbtn = Create("TextButton", {
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 10),
-		Size = UDim2.new(0, 20, 0, 20), Text = "✕", Font = Enum.Font.GothamBold, TextSize = 11,
+		Size = UDim2.new(0, 20, 0, 20), Text = "âœ•", Font = Enum.Font.GothamBold, TextSize = 11,
 		BackgroundTransparency = 1, AutoButtonColor = false, ZIndex = 93, Parent = card,
 	})
 	Paint(xbtn, "TextColor3", "SubText")
@@ -1605,7 +1605,7 @@ local function ShowPremiumPrompt(featureName)
 			pcall(setclipboard, Crystalized.BuyLink)
 			-- the info box tells the player exactly what to do next
 			showInfo("<font color=\"#7ce29b\">Copied!</font> <b>" .. Crystalized.BuyLink ..
-				"</b> is in your clipboard — paste it into your browser, buy a key, then redeem it here.")
+				"</b> is in your clipboard â€” paste it into your browser, buy a key, then redeem it here.")
 		else
 			showInfo("No clipboard on this device. Go to: <b>" .. Crystalized.BuyLink .. "</b>")
 		end
@@ -1699,7 +1699,7 @@ local function RegisterFlag(flag, value, setFn, typeName)
 	Crystalized._flagMeta[flag] = { Type = typeName, Set = setFn }
 end
 
---▶ PREMIUM GATE -- call at the end of any builder to gold-lock a row.
+--â–¶ PREMIUM GATE -- call at the end of any builder to gold-lock a row.
 -- The row turns gold, gains a PRO badge, and all clicks open the key
 -- prompt instead of working, until Crystalized:UnlockPremium() runs.
 local function Premiumize(row, nameLabel, nameEntry, featureName)
@@ -1725,10 +1725,10 @@ local function Premiumize(row, nameLabel, nameEntry, featureName)
 	-- animated gold shine sweep across premium elements
 	local pShine = Create("UIGradient", {
 		Color = ColorSequence.new({
-			NumberSequenceKeypoint.new(0,   Color3.fromRGB(255, 215, 100)),
-			NumberSequenceKeypoint.new(0.4, Color3.fromRGB(255, 240, 180)),
-			NumberSequenceKeypoint.new(0.6, Color3.fromRGB(255, 199, 64)),
-			NumberSequenceKeypoint.new(1,   Color3.fromRGB(255, 215, 100)),
+			ColorSequenceKeypoint.new(0,   Color3.fromRGB(255, 215, 100)),
+			ColorSequenceKeypoint.new(0.4, Color3.fromRGB(255, 240, 180)),
+			ColorSequenceKeypoint.new(0.6, Color3.fromRGB(255, 199, 64)),
+			ColorSequenceKeypoint.new(1,   Color3.fromRGB(255, 215, 100)),
 		}),
 		Offset = Vector2.new(-1, 0),
 		Parent = row,
@@ -1759,7 +1759,7 @@ local function Premiumize(row, nameLabel, nameEntry, featureName)
 	end)
 end
 
---▶ BUTTON ----------------------------------------------------
+--â–¶ BUTTON ----------------------------------------------------
 local function BuildButton(section, opts)
 	local row = MakeRow(section._holder, 36, opts.Name)
 	local nameLbl, nameEntry = MakeNameLabel(row, opts.Name)
@@ -1769,11 +1769,11 @@ local function BuildButton(section, opts)
 		Font = Enum.Font.GothamBold, TextSize = 13, Text = ">", Parent = row,
 	})
 	local arrowEntry = Paint(arrow, "TextColor3", "SubText")
-	-- per-element styling (same as toggles/sliders): Color pins the arrow; Danger = red + ⚠
+	-- per-element styling (same as toggles/sliders): Color pins the arrow; Danger = red + âš 
 	local elemColor = opts.Danger and DANGER_COLOR or ResolveColor(opts.Color)
 	if elemColor then arrowEntry.c = elemColor Recolor(arrowEntry, true) end
 	if opts.Danger then
-		nameLbl.Text = "▲  " .. nameLbl.Text
+		nameLbl.Text = "â–²  " .. nameLbl.Text
 		nameEntry.c = DANGER_COLOR
 	end
 	local click = Create("TextButton", {
@@ -1799,7 +1799,7 @@ local function BuildButton(section, opts)
 	return {}
 end
 
---▶ TOGGLE (with optional keybind chip on the right) ------------
+--â–¶ TOGGLE (with optional keybind chip on the right) ------------
 local function BuildToggle(section, opts)
 	local row = MakeRow(section._holder, 38, opts.Name)
 	local nameLbl, nameEntry = MakeNameLabel(row, opts.Name)
@@ -1810,11 +1810,11 @@ local function BuildToggle(section, opts)
 		Size = UDim2.new(0, 38, 0, 20), BorderSizePixel = 0, Parent = row,
 	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
 	local switchEntry = Paint(switch, "BackgroundColor3", "ToggleOff")
-	-- per-element styling: Color = "Azure"/"#hex"/Color3, or Danger = true (hot red + ⚠)
+	-- per-element styling: Color = "Azure"/"#hex"/Color3, or Danger = true (hot red + âš )
 	local elemColor = opts.Danger and DANGER_COLOR or ResolveColor(opts.Color)
 	if elemColor then switchEntry.c = elemColor end
 	if opts.Danger then
-		nameLbl.Text = "▲  " .. nameLbl.Text
+		nameLbl.Text = "â–²  " .. nameLbl.Text
 		nameEntry.c = DANGER_COLOR
 	end
 	local knob = Create("Frame", {
@@ -1880,10 +1880,10 @@ local function BuildToggle(section, opts)
 			Parent = chip,
 		})
 		Paint(chipLabel, "TextColor3", "SubText")
-		-- ⚙ gear to the LEFT of the chip: opens the PRESS/HOLD mode menu
+		-- âš™ gear to the LEFT of the chip: opens the PRESS/HOLD mode menu
 		local gear = Create("TextButton", {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0, -6, 0.5, 0),
-			Size = UDim2.new(0, 17, 0, 17), Text = "⚙", Font = Enum.Font.GothamBold, TextSize = 9,
+			Size = UDim2.new(0, 17, 0, 17), Text = "âš™", Font = Enum.Font.GothamBold, TextSize = 9,
 			AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 4, Parent = chip,
 		}, { Create("UICorner", { CornerRadius = UDim.new(0, 4) }) })
 		Paint(gear, "BackgroundColor3", "Card")
@@ -1931,7 +1931,7 @@ local function BuildToggle(section, opts)
 	return Toggle
 end
 
---▶ SLIDER (drag + click-to-type value box) ----------------------
+--â–¶ SLIDER (drag + click-to-type value box) ----------------------
 local function BuildSlider(section, opts)
 	local min, max = opts.Min or 0, opts.Max or 100
 	local decimals = opts.Decimals or 0
@@ -1953,10 +1953,10 @@ local function BuildSlider(section, opts)
 	Paint(box, "BackgroundColor3", "Card")
 	Paint(box, "TextColor3", "Text")
 
-	-- per-element styling: Color = "Emerald"/#hex/Color3 pins the fill; Danger = true goes red + ⚠
+	-- per-element styling: Color = "Emerald"/#hex/Color3 pins the fill; Danger = true goes red + âš 
 	local elemColor = opts.Danger and DANGER_COLOR or ResolveColor(opts.Color)
 	if opts.Danger then
-		nameLbl.Text = "▲  " .. nameLbl.Text
+		nameLbl.Text = "â–²  " .. nameLbl.Text
 		nameEntry.c = DANGER_COLOR
 	end
 
@@ -2052,7 +2052,7 @@ local function BuildSlider(section, opts)
 	return Slider
 end
 
---▶ DROPDOWN (single or multi select) ----------------------------
+--â–¶ DROPDOWN (single or multi select) ----------------------------
 -- Multi = true   -> Default = {"ESP", "Chams"}  Callback gets a TABLE
 -- Multi = false  -> Default = "ESP"             Callback gets a string
 local function BuildDropdown(section, opts)
@@ -2124,7 +2124,7 @@ local function BuildDropdown(section, opts)
 		for _, ref in ipairs(optionRefs) do
 			local isSel = (multi and selected[ref.option] == true) or (not multi and selected == ref.option)
 			ref.label.Font = isSel and Enum.Font.GothamSemibold or Enum.Font.GothamMedium
-			if ref.check then ref.check.Text = isSel and "✓" or "" end
+			if ref.check then ref.check.Text = isSel and "âœ“" or "" end
 		end
 	end
 
@@ -2206,7 +2206,7 @@ local function BuildDropdown(section, opts)
 	return Dropdown
 end
 
---▶ KEYBIND (standalone) ------------------------------------------
+--â–¶ KEYBIND (standalone) ------------------------------------------
 local function BuildKeybind(section, opts)
 	if not HAS_KEYBOARD then
 		-- touch-only: keep the flag alive for configs, but render nothing
@@ -2230,10 +2230,10 @@ local function BuildKeybind(section, opts)
 		BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 11, Parent = chip,
 	})
 	Paint(chipLabel, "TextColor3", "Text")
-	-- ⚙ gear to the LEFT of the chip: opens the PRESS/HOLD mode menu
+	-- âš™ gear to the LEFT of the chip: opens the PRESS/HOLD mode menu
 	local gear = Create("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0, -6, 0.5, 0),
-		Size = UDim2.new(0, 18, 0, 18), Text = "⚙", Font = Enum.Font.GothamBold, TextSize = 9,
+		Size = UDim2.new(0, 18, 0, 18), Text = "âš™", Font = Enum.Font.GothamBold, TextSize = 9,
 		AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 4, Parent = chip,
 	}, { Create("UICorner", { CornerRadius = UDim.new(0, 4) }) })
 	Paint(gear, "BackgroundColor3", "Card")
@@ -2293,7 +2293,7 @@ local function BuildKeybind(section, opts)
 	return Keybind
 end
 
---▶ TEXTBOX --------------------------------------------------------
+--â–¶ TEXTBOX --------------------------------------------------------
 local function BuildTextbox(section, opts)
 	local row = MakeRow(section._holder, 38, opts.Name)
 	MakeNameLabel(row, opts.Name).Size = UDim2.new(0.45, -12, 1, 0)
@@ -2322,7 +2322,7 @@ local function BuildTextbox(section, opts)
 	return Textbox
 end
 
---▶ INFO BOX (named hint card, add it anywhere above anything, any color) --
+--â–¶ INFO BOX (named hint card, add it anywhere above anything, any color) --
 -- CreateInfoBox({ Name="Notice", Text="...", Color="Green"|"Red"|"White"|"Gold"|accent/hex/Color3 })
 local function BuildInfoBox(section, opts)
 	local col = ResolveColor(opts.Color) or Color3.new(1, 1, 1)
@@ -2371,7 +2371,7 @@ local function BuildInfoBox(section, opts)
 	return Info
 end
 
---▶ DISCORD CARD (invite box: title, blurb, live-ish stats, copy button) --
+--â–¶ DISCORD CARD (invite box: title, blurb, live-ish stats, copy button) --
 local function BuildDiscordCard(section, opts)
 	opts = opts or {}
 	local invite = tostring(opts.Invite or Crystalized.DiscordInvite)
@@ -2417,8 +2417,8 @@ local function BuildDiscordCard(section, opts)
 		Paint(desc, "TextColor3", "SubText")
 	end
 
-	local stats = tostring(opts.Stats or ((opts.Online and ("● " .. opts.Online .. " online    ") or "")
-		.. (opts.Members and ("● " .. opts.Members .. " members") or "")))
+	local stats = tostring(opts.Stats or ((opts.Online and ("â— " .. opts.Online .. " online    ") or "")
+		.. (opts.Members and ("â— " .. opts.Members .. " members") or "")))
 	if stats ~= "" then
 		local st = Create("TextLabel", {
 			Size = UDim2.new(1, 0, 0, 13), BackgroundTransparency = 1, LayoutOrder = 3,
@@ -2449,7 +2449,7 @@ local function BuildDiscordCard(section, opts)
 			BackgroundColor3 = Color3.fromRGB(88, 101, 242) }):Play()
 	end)
 	copy.MouseButton1Click:Connect(function()
-		copy.Text = "✓ Copied!"
+		copy.Text = "âœ“ Copied!"
 		if type(setclipboard) == "function" then
 			pcall(setclipboard, invite)
 		else
@@ -2464,7 +2464,7 @@ local function BuildDiscordCard(section, opts)
 	return Card
 end
 
---▶ COLOR PICKER (ADVANCED: SV pad + rainbow hue + hex + presets) --
+--â–¶ COLOR PICKER (ADVANCED: SV pad + rainbow hue + hex + presets) --
 local function BuildColorPicker(section, opts)
 	local row = MakeRow(section._holder, 38, opts.Name)
 	row.ClipsDescendants = true
@@ -2681,7 +2681,7 @@ local function BuildColorPicker(section, opts)
 	return Picker
 end
 
---▶ LABEL & PARAGRAPH ------------------------------------------------
+--â–¶ LABEL & PARAGRAPH ------------------------------------------------
 local function BuildLabel(section, text)
 	local label = Create("TextLabel", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
@@ -2734,7 +2734,7 @@ end
 local function BuildSettingsTab(Window)
 	local tab = Window:CreateTab({ Name = "Settings", Icon = "settings" })
 
-	--▶ Appearance ------------
+	--â–¶ Appearance ------------
 	local appearance = tab:CreateSection({ Name = "Appearance", Side = "Left" })
 
 	-- accent swatch row (8 presets, live swap)
@@ -2766,7 +2766,7 @@ local function BuildSettingsTab(Window)
 
 	appearance:CreateDropdown({
 		Name = "Theme",
-		Description = "Whole-UI palette swap — four new dark variants included",
+		Description = "Whole-UI palette swap â€” four new dark variants included",
 		Flag = "UI.Theme", Default = "Dark",
 		Options = { "Dark", "Midnight", "Crimson Dusk", "Forest", "Aurora", "Light" },
 		Notify = false,
@@ -2834,7 +2834,7 @@ local function BuildSettingsTab(Window)
 		Callback = function(v) Crystalized:SetBackgroundImage(v) end,
 	})
 
-	--▶ Window ------------
+	--â–¶ Window ------------
 	local win = tab:CreateSection({ Name = "Window", Side = "Left" })
 
 	-- edits the SAME bind the window uses, so RightShift never double-fires
@@ -2857,7 +2857,7 @@ local function BuildSettingsTab(Window)
 		Callback = function() Crystalized:Unload() end,
 	})
 
-	--▶ Configuration (Obsidian style) ------------
+	--â–¶ Configuration (Obsidian style) ------------
 	local cfg = tab:CreateSection({ Name = "Configuration", Side = "Right" })
 
 	local configDrop = cfg:CreateDropdown({
@@ -2906,8 +2906,8 @@ local function BuildSettingsTab(Window)
 
 	cfg:CreateTextbox({
 		Name = "Import code",
-		Description = "Paste a CRYS1-... code and hit Enter — it saves as \"imported\"",
-		Placeholder = "CRYS1-…",
+		Description = "Paste a CRYS1-... code and hit Enter â€” it saves as \"imported\"",
+		Placeholder = "CRYS1-â€¦",
 		Flag = "UI.ImportCode",
 		Callback = function(value)
 			value = tostring(value or "")
@@ -2954,14 +2954,14 @@ local function BuildSettingsTab(Window)
 	local about = tab:CreateSection({ Name = "Diagnostics", Side = "Right" })
 	about:CreateToggle({
 		Name = "Debug profiler",
-		Description = "Times every element callback — anything over 16ms gets warn()ed",
+		Description = "Times every element callback â€” anything over 16ms gets warn()ed",
 		Flag = "UI.Debug",
 		Notify = false,
 		Callback = function(on) Crystalized.Debug = on end,
 	})
 	about:CreateButton({
 		Name = "Profiler report",
-		Description = "Samples so far: count, average, worst — printed + toasted",
+		Description = "Samples so far: count, average, worst â€” printed + toasted",
 		Callback = function() Crystalized:DebugReport() end,
 	})
 
@@ -3046,8 +3046,12 @@ function Crystalized:CreateWindow(options)
 			Transparency = NumberSequence.new({
 				NumberSequenceKeypoint.new(0, 0.93),
 				NumberSequenceKeypoint.new(0.25, 1),
+				NumberSequenceKeypoint.new(1, 1),
 			}),
-			Color = ColorSequence.new(Color3.new(1, 1, 1)),
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+				ColorSequenceKeypoint.new(1, Color3.new(1, 1, 1)),
+			}),
 		}),
 		Create("UIScale", { Scale = startScale }),
 	})
@@ -3096,7 +3100,7 @@ function Crystalized:CreateWindow(options)
 
 	-- top-left brand mark: a crisp lucide FEATHER by default, swappable to ANY
 	-- icon name ("skull") or rbxassetid url via CreateWindow({ Logo = "..." })
-	-- or Window:SetLogo(...) — the pill mirrors it automatically.
+	-- or Window:SetLogo(...) â€” the pill mirrors it automatically.
 	local logoImg = Create("ImageLabel", {
 		Position = UDim2.new(0, 14, 0.5, -1), AnchorPoint = Vector2.new(0, 0.5),
 		Size = UDim2.new(0, 19, 0, 19), BackgroundTransparency = 1,
@@ -3131,11 +3135,11 @@ function Crystalized:CreateWindow(options)
 	-- the shine: a soft bright band that sweeps across the title every few seconds
 	local function makeShineColor()
 		return ColorSequence.new({
-			NumberSequenceKeypoint.new(0,    Color3.new(1, 1, 1)),
-			NumberSequenceKeypoint.new(0.42, Color3.new(1, 1, 1)),
-			NumberSequenceKeypoint.new(0.5,  Lighten(Theme.Accent, 0.6)),
-			NumberSequenceKeypoint.new(0.58, Color3.new(1, 1, 1)),
-			NumberSequenceKeypoint.new(1,    Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(0,    Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(0.42, Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(0.5,  Lighten(Theme.Accent, 0.6)),
+			ColorSequenceKeypoint.new(0.58, Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(1,    Color3.new(1, 1, 1)),
 		})
 	end
 	local shine = Create("UIGradient", { Color = makeShineColor(), Parent = nameLabel })
@@ -3187,11 +3191,11 @@ function Crystalized:CreateWindow(options)
 		if isRainbow then
 			local rg = Create("UIGradient", {
 				Color = ColorSequence.new({
-					NumberSequenceKeypoint.new(0,     Color3.fromRGB(255, 90, 110)),
-					NumberSequenceKeypoint.new(0.25,  Color3.fromRGB(255, 199, 64)),
-					NumberSequenceKeypoint.new(0.5,   Color3.fromRGB(107, 229, 133)),
-					NumberSequenceKeypoint.new(0.75,  Color3.fromRGB(79, 163, 255)),
-					NumberSequenceKeypoint.new(1,     Color3.fromRGB(199, 120, 255)),
+					ColorSequenceKeypoint.new(0,     Color3.fromRGB(255, 90, 110)),
+					ColorSequenceKeypoint.new(0.25,  Color3.fromRGB(255, 199, 64)),
+					ColorSequenceKeypoint.new(0.5,   Color3.fromRGB(107, 229, 133)),
+					ColorSequenceKeypoint.new(0.75,  Color3.fromRGB(79, 163, 255)),
+					ColorSequenceKeypoint.new(1,     Color3.fromRGB(199, 120, 255)),
 				}),
 				Parent = pill,
 			})
@@ -3240,9 +3244,9 @@ function Crystalized:CreateWindow(options)
 		AttachTooltip(btn, tooltipText)
 		return btn
 	end
-	local closeBtn = makeTopButton("✕", -12, "Close (asks you first)")
-	local minBtn   = makeTopButton("—", -46, "Minimize -- fades to the pill")
-	local gearBtn  = makeTopButton("⚙", -80, "Quick settings")
+	local closeBtn = makeTopButton("âœ•", -12, "Close (asks you first)")
+	local minBtn   = makeTopButton("â€”", -46, "Minimize -- fades to the pill")
+	local gearBtn  = makeTopButton("âš™", -80, "Quick settings")
 	minBtn.MouseButton1Click:Connect(function() Window:Toggle() end)
 	closeBtn.MouseButton1Click:Connect(ShowCloseConfirm)
 
@@ -3387,7 +3391,7 @@ function Crystalized:CreateWindow(options)
 	Paint(chipUser, "TextColor3", "SubText")
 
 	-------------------- Pages area --------------------
-	-- (the bottom status strip was removed per request — the tagline lives up top,
+	-- (the bottom status strip was removed per request â€” the tagline lives up top,
 	--   so the hub now uses the full height for content)
 	local pages = Create("Frame", {
 		Position = UDim2.new(0, 151, 0, 46), Size = UDim2.new(1, -151, 1, -46),
@@ -3711,7 +3715,7 @@ function Crystalized:CreateWindow(options)
 
 	local dclose = Create("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0),
-		Size = UDim2.new(0, 18, 0, 18), Text = "✕", Font = Enum.Font.GothamBold, TextSize = 10,
+		Size = UDim2.new(0, 18, 0, 18), Text = "âœ•", Font = Enum.Font.GothamBold, TextSize = 10,
 		BackgroundTransparency = 1, AutoButtonColor = false, ZIndex = 18, Parent = dtop,
 	})
 	Paint(dclose, "TextColor3", "SubText")
@@ -3720,7 +3724,7 @@ function Crystalized:CreateWindow(options)
 		refreshDummyDot()
 	end)
 
-	-------------------- Visibility (fade ⇆ pill) --------------------
+	-------------------- Visibility (fade â‡† pill) --------------------
 	function Window:SetVisible(visible)
 		self._visible = visible
 		if self._syncEspPreview then self._syncEspPreview() end
@@ -3784,7 +3788,7 @@ function Crystalized:CreateWindow(options)
 		local head = Create("TextLabel", {
 			Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, LayoutOrder = 1,
 			Font = Enum.Font.GothamBold, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left,
-			Text = tostring(title or ("What's new in " .. (windowName or "this update"))) .. "  ·  v" .. tostring(version or Crystalized.Version),
+			Text = tostring(title or ("What's new in " .. (windowName or "this update"))) .. "  Â·  v" .. tostring(version or Crystalized.Version),
 			Parent = card,
 		})
 		Paint(head, "TextColor3", "Text")
@@ -3801,7 +3805,7 @@ function Crystalized:CreateWindow(options)
 				Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1, LayoutOrder = order, TextWrapped = true,
 				Font = Enum.Font.GothamMedium, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
-				TextColor3 = lcol, Text = "•  " .. ltext, Parent = card,
+				TextColor3 = lcol, Text = "â€¢  " .. ltext, Parent = card,
 			})
 			order = order + 1
 		end
@@ -3830,7 +3834,7 @@ function Crystalized:CreateWindow(options)
 		end
 	end)
 	Pill.MouseButton1Click:Connect(function()
-		if os.clock() < reopenSuppressUntil then return end   -- the ✕ was just pressed
+		if os.clock() < reopenSuppressUntil then return end   -- the âœ• was just pressed
 		if pillPressPos then
 			local m = UserInputService:GetMouseLocation()
 			if (Vector2.new(m.X, m.Y) - pillPressPos).Magnitude > 8 then return end
@@ -3875,7 +3879,7 @@ function Crystalized:CreateWindow(options)
 			tabIcon = Create("TextLabel", {
 				Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0, 16, 1, 0),
 				BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 12,
-				Text = opts.Icon or "◆", Parent = tabBtn,
+				Text = opts.Icon or "â—†", Parent = tabBtn,
 			})
 			tabIconEntry = Paint(tabIcon, "TextColor3", "SubText")
 		end
@@ -4022,7 +4026,7 @@ function Crystalized:CreateWindow(options)
 			local chev = Create("TextLabel", {
 				AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -2, 0.5, 0),
 				Size = UDim2.new(0, 16, 0, 16), BackgroundTransparency = 1, ZIndex = 5,
-				Font = Enum.Font.GothamBold, TextSize = 11, Text = "▾", Parent = title,
+				Font = Enum.Font.GothamBold, TextSize = 11, Text = "â–¾", Parent = title,
 			})
 			Paint(chev, "TextColor3", "SubText")
 			local hit = Create("TextButton", {
@@ -4046,7 +4050,7 @@ function Crystalized:CreateWindow(options)
 					end
 				end
 				title.Text = string.upper(tostring(sopts.Name or "Section"))
-				chev.Text = state and "▸" or "▾"
+				chev.Text = state and "â–¸" or "â–¾"
 				TweenService:Create(chev, TweenInfo.new(0.2, Enum.EasingStyle.Quint), {
 					Rotation = state and -90 or 0,
 				}):Play()
@@ -4128,10 +4132,10 @@ function Crystalized:CreateWindow(options)
 		end
 		-- live result count right in the placeholder (per answer 22)
 		if query == "" then
-			searchBox.PlaceholderText = "Search settings…"
+			searchBox.PlaceholderText = "Search settingsâ€¦"
 		else
 			searchBox.PlaceholderText = count .. " match" .. (count == 1 and "" or "es")
-				.. "  —  Enter to jump"
+				.. "  â€”  Enter to jump"
 		end
 		Window._searchFirstHit = firstHitTab
 	end
@@ -4197,7 +4201,7 @@ function Crystalized:CreateWindow(options)
 			local fps = math.floor(frames / elapsed + 0.5)
 			local ping = 0
 			pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 1000 + 0.5) end)
-			local txt = fps .. " FPS  •  " .. ping .. " ms"
+			local txt = fps .. " FPS  â€¢  " .. ping .. " ms"
 			wmStats.Text = txt
 			frames, elapsed = 0, 0
 		end
@@ -4261,7 +4265,7 @@ function Crystalized:CreateWindow(options)
 		Window:SetVisible(true)
 	end
 
-	-- optional "What's new" changelog card — shows ONCE per version you bump.
+	-- optional "What's new" changelog card â€” shows ONCE per version you bump.
 	-- CreateWindow({ Changelog = { Version = "1.1.0", Lines = {"added x", "fixed y"} } })
 	if options.Changelog then
 		local cl = options.Changelog
