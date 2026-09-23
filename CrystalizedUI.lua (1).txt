@@ -716,7 +716,7 @@ end)
 --============================================================--
 local NotifHolder = Create("Frame", {
 	Name = "Notifications", AnchorPoint = Vector2.new(1, 1), ZIndex = 60,
-	Position = UDim2.new(1, -12, 1, -12), Size = UDim2.new(0, 155, 0, 0),
+	Position = UDim2.new(1, -8, 1, -8), Size = UDim2.new(0, 135, 0, 0),
 	AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = Gui,
 }, {
 	Create("UIListLayout", {
@@ -725,8 +725,8 @@ local NotifHolder = Create("Frame", {
 	}),
 })
 
--- notification stack cap: at most 3 toasts on screen, the rest wait in a queue
-local NOTIF_CAP = 3
+-- notification stack cap: at most 2 toasts on screen, the rest wait in a queue
+local NOTIF_CAP = 2
 local notifActive, notifQueue = 0, {}
 
 local function NotifyNow(opts)
@@ -736,15 +736,16 @@ local function NotifyNow(opts)
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1, Parent = NotifHolder,
 	})
-	local card = Create("Frame", {
+	local card = Create("TextButton", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 		Position = UDim2.new(1, 30, 0, 0), ClipsDescendants = true,
+		Text = "", AutoButtonColor = false,
 		BorderSizePixel = 0, Parent = wrapper,
 	}, {
 		Create("UICorner", { CornerRadius = UDim.new(0, 5) }),
 		Create("UIPadding", {
-			PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
-			PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 7),
+			PaddingTop = UDim.new(0, 3), PaddingBottom = UDim.new(0, 3),
+			PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 5),
 		}),
 		Create("UIListLayout", { Padding = UDim.new(0, 1), SortOrder = Enum.SortOrder.LayoutOrder }),
 	})
@@ -789,8 +790,8 @@ local function NotifyNow(opts)
 		Paint(pfill, "BackgroundColor3", "Accent")
 	end
 	local title = Create("TextLabel", {
-		Size = UDim2.new(1, 0, 0, 12), BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(1, 0, 0, 11), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left,
 		Text = tostring(opts.Title or "Notification"), LayoutOrder = 1, Parent = card,
 	})
 	if tinfo then title.TextColor3 = tinfo.c
@@ -798,20 +799,23 @@ local function NotifyNow(opts)
 	if opts.Content and opts.Content ~= "" then
 		local body = Create("TextLabel", {
 			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-			BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 9,
+			BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 8,
 			TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
 			Text = tostring(opts.Content), LayoutOrder = 2, Parent = card,
 		})
 		Paint(body, "TextColor3", "SubText")
 	end
 	-- slide + grow in, bouncy
-	Tween(card, 0.5, { Position = UDim2.new(0, 0, 0, 0) })
+	Tween(card, 0.4, { Position = UDim2.new(0, 0, 0, 0) })
 	-- progress bar drains over the toast's lifetime
 	TweenService:Create(pfill, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
 		Size = UDim2.new(0, 0, 1, 0),
 	}):Play()
-	task.delay(duration, function()
-		local out = Tween(card, 0.3, { Position = UDim2.new(1, 40, 0, 0) }, "Snappy")
+	local dismissed = false
+	local function dismiss()
+		if dismissed then return end
+		dismissed = true
+		local out = Tween(card, 0.25, { Position = UDim2.new(1, 40, 0, 0) }, "Snappy")
 		out.Completed:Wait()
 		wrapper:Destroy()
 		notifActive = notifActive - 1
@@ -819,7 +823,9 @@ local function NotifyNow(opts)
 			local nextUp = table.remove(notifQueue, 1)
 			Crystalized:Notify(nextUp)
 		end
-	end)
+	end
+	card.MouseButton1Click:Connect(dismiss)
+	task.delay(duration, dismiss)
 end
 
 -- Crystalized:Notify({ Title, Content, Type, Duration })
@@ -3136,7 +3142,7 @@ function Crystalized:CreateWindow(options)
 
 	local tagLabel = Create("TextLabel", {
 		Position = UDim2.new(0, 42, 0, 24), Size = UDim2.new(0, 320, 0, 14),
-		BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 10.5,
+		BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 11,
 		TextXAlignment = Enum.TextXAlignment.Left, Text = tagline, Parent = topbar,
 	})
 	Paint(tagLabel, "TextColor3", "SubText")
@@ -3153,13 +3159,13 @@ function Crystalized:CreateWindow(options)
 		local col = isRainbow and Color3.new(1, 1, 1) or ResolveColor(t.Color or t.Style) or Theme.Accent
 		local useAccent = (not isRainbow) and ResolveColor(t.Color or t.Style) == nil
 		local pill = Create("TextLabel", {
-			AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 0, 18),
+			AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 0, 20),
 			BackgroundTransparency = 0.82, BorderSizePixel = 0,
-			Font = Enum.Font.GothamBold, TextSize = 11, Text = tostring(t.Name or "TAG"),
+			Font = Enum.Font.GothamBold, TextSize = 12, Text = tostring(t.Name or "TAG"),
 			LayoutOrder = 10, Parent = titleRow,
 		}, {
-			Create("UICorner", { CornerRadius = UDim.new(0, 4) }),
-			Create("UIPadding", { PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 7) }),
+			Create("UICorner", { CornerRadius = UDim.new(0, 5) }),
+			Create("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }),
 			-- crisp integrated badge, no harsh AI border
 		})
 		pill.BackgroundColor3 = col
@@ -3723,7 +3729,7 @@ function Crystalized:CreateWindow(options)
 		if not dummy.Visible then return end
 		local ap, sz = main.AbsolutePosition, main.AbsoluteSize
 		local dummyH = dummy.AbsoluteSize.Y
-		dummy.Position = UDim2.fromOffset(ap.X + sz.X + 12, ap.Y + (sz.Y - dummyH) * 0.5)
+		dummy.Position = UDim2.fromOffset(ap.X + sz.X + 14, ap.Y + (sz.Y - dummyH) * 0.5)
 	end)
 
 	-- live sync: reads the SAME flags your real ESP uses
@@ -4024,8 +4030,8 @@ function Crystalized:CreateWindow(options)
 			AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(0, 0, 0, 0),
 			Visible = false, Parent = pages,
 		}, { Create("UIPadding", {
-			PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 16),
-			PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 24),
+			PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 18),
+			PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 28),
 		}) })
 		Paint(page, "ScrollBarImageColor3", "Accent")
 		page.ScrollBarImageTransparency = 0.25
@@ -4034,13 +4040,13 @@ function Crystalized:CreateWindow(options)
 			BackgroundTransparency = 1, Parent = page,
 		}, {
 			Create("UIListLayout", {
-				FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 12),
+				FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 14),
 				SortOrder = Enum.SortOrder.LayoutOrder,
 			}),
 		})
 		local function makeCol(layoutOrder)
 			return Create("Frame", {
-				Size = UDim2.new(0.5, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+				Size = UDim2.new(0.5, -7, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 				BackgroundTransparency = 1, LayoutOrder = layoutOrder, Parent = cols,
 			}, {
 				Create("UIListLayout", { Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder }),
