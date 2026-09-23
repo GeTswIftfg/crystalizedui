@@ -3259,62 +3259,115 @@ function Crystalized:CreateWindow(options)
 
 	MakeDraggable(topbar, main)
 
-	-------------------- Resize grip (drag bottom-right corner to resize the hub) --------------------
-	local gripHit = Create("TextButton", {
-		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -4, 1, -4),
-		Size = UDim2.new(0, 20, 0, 20), BackgroundTransparency = 1, Text = "",
+	-- draggable bottom strip
+	local bottomDrag = Create("Frame", {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1,
+		ZIndex = 5, Parent = main,
+	})
+	MakeDraggable(bottomDrag, main)
+
+	-------------------- Faint interactive resize rails --------------------
+	local railRight = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 46),
+		Size = UDim2.new(0, 8, 1, -54), BackgroundTransparency = 1, Text = "",
 		AutoButtonColor = false, ZIndex = 60, Parent = main,
 	})
-	local gripLines = {}
-	for i, cfg in ipairs({ { cx = 9,  len = 12 }, { cx = 13, len = 6 } }) do
-		local line = Create("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, cfg.cx, 0, cfg.cx),
-			Size = UDim2.new(0, cfg.len, 0, 2), Rotation = 45, BorderSizePixel = 0,
-			BackgroundTransparency = 0.45, Parent = gripHit,
-		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-		Paint(line, "BackgroundColor3", "SubText")
-		gripLines[i] = line
+	local railRightGlow = Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 2, 0, 36), BackgroundTransparency = 0.85, BorderSizePixel = 0,
+		Parent = railRight,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	Paint(railRightGlow, "BackgroundColor3", "Accent")
+
+	local railBottom = Create("TextButton", {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 150, 1, 0),
+		Size = UDim2.new(1, -158, 0, 8), BackgroundTransparency = 1, Text = "",
+		AutoButtonColor = false, ZIndex = 60, Parent = main,
+	})
+	local railBottomGlow = Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 36, 0, 2), BackgroundTransparency = 0.85, BorderSizePixel = 0,
+		Parent = railBottom,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	Paint(railBottomGlow, "BackgroundColor3", "Accent")
+
+	local railCorner = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -2, 1, -2),
+		Size = UDim2.new(0, 14, 0, 14), BackgroundTransparency = 1, Text = "",
+		AutoButtonColor = false, ZIndex = 65, Parent = main,
+	})
+	local railCornerGlow = Create("Frame", {
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, 0, 1, 0),
+		Size = UDim2.new(0, 8, 0, 8), BackgroundTransparency = 0.8, BorderSizePixel = 0,
+		Parent = railCorner,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 3) }) })
+	Paint(railCornerGlow, "BackgroundColor3", "Accent")
+
+	local resizeMode = nil -- "W", "H", "Both"
+	local rStartMouse, rStartW, rStartH, rStartPosX, rStartPosY = nil, nil, nil, nil, nil
+
+	local function startResize(mode, input)
+		resizeMode = mode
+		rStartMouse = Vector2.new(input.Position.X, input.Position.Y)
+		rStartW     = main.Size.X.Offset
+		rStartH     = main.Size.Y.Offset
+		rStartPosX  = main.Position.X.Offset
+		rStartPosY  = main.Position.Y.Offset
 	end
-	local resizing, dragStart, sizeStart
-	gripHit.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-			resizing  = true
-			-- re-anchor to the top-left so the corner you grabbed actually follows the cursor
-			local ap = main.AbsolutePosition
-			main.AnchorPoint = Vector2.new(0, 0)
-			main.Position = UDim2.fromOffset(ap.X, ap.Y)
-			dragStart = input.Position
-			local sc = (main:FindFirstChildWhichIsA("UIScale") or {}).Scale or 1
-			sizeStart = main.AbsoluteSize / sc
-		end
-		input.Changed:Connect(function()
-			if input.UserInputState == Enum.UserInputState.End then resizing = false end
-		end)
-	end)
-	gripHit.MouseEnter:Connect(function()
-		for _, l in ipairs(gripLines) do
-			Tween(l, 0.15, { BackgroundTransparency = 0 })
-			l.BackgroundColor3 = Colors.Accent
+
+	railRight.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			startResize("W", input)
 		end
 	end)
-	gripHit.MouseLeave:Connect(function()
-		for _, l in ipairs(gripLines) do
-			Tween(l, 0.15, { BackgroundTransparency = 0.45 })
-			Paint(l, "BackgroundColor3", "SubText")
+	railBottom.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			startResize("H", input)
 		end
 	end)
+	railCorner.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			startResize("Both", input)
+		end
+	end)
+
+	railRight.MouseEnter:Connect(function() Tween(railRightGlow, 0.2, { BackgroundTransparency = 0.25 }) end)
+	railRight.MouseLeave:Connect(function() if not resizeMode then Tween(railRightGlow, 0.2, { BackgroundTransparency = 0.85 }) end end)
+	railBottom.MouseEnter:Connect(function() Tween(railBottomGlow, 0.2, { BackgroundTransparency = 0.25 }) end)
+	railBottom.MouseLeave:Connect(function() if not resizeMode then Tween(railBottomGlow, 0.2, { BackgroundTransparency = 0.85 }) end end)
+	railCorner.MouseEnter:Connect(function() Tween(railCornerGlow, 0.2, { BackgroundTransparency = 0.2 }) end)
+	railCorner.MouseLeave:Connect(function() if not resizeMode then Tween(railCornerGlow, 0.2, { BackgroundTransparency = 0.8 }) end end)
+
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+			resizeMode = nil
+			Tween(railRightGlow, 0.2, { BackgroundTransparency = 0.85 })
+			Tween(railBottomGlow, 0.2, { BackgroundTransparency = 0.85 })
+			Tween(railCornerGlow, 0.2, { BackgroundTransparency = 0.8 })
+		end
+	end)
+
 	UserInputService.InputChanged:Connect(function(input)
-		if not resizing or main.Parent == nil then return end
-		if input.UserInputType ~= Enum.UserInputType.MouseMovement
-		and input.UserInputType ~= Enum.UserInputType.Touch then return end
-		local cam = workspace.CurrentCamera
-		local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
-		local sc = (main:FindFirstChildWhichIsA("UIScale") or {}).Scale or 1
-		local delta = (input.Position - dragStart) / sc
-		local w = math.clamp(sizeStart.X + delta.X, 520, vp.X - 40)
-		local h = math.clamp(sizeStart.Y + delta.Y, 340, vp.Y - 60)
-		main.Size = UDim2.fromOffset(w, h)
+		if resizeMode and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) and rStartMouse then
+			local s = (main.UIScale and main.UIScale.Scale) or 1
+			local deltaX = (input.Position.X - rStartMouse.X) / s
+			local deltaY = (input.Position.Y - rStartMouse.Y) / s
+			local newW = rStartW
+			local newH = rStartH
+			if resizeMode == "W" or resizeMode == "Both" then
+				newW = math.clamp(rStartW + deltaX, 480, 940)
+			end
+			if resizeMode == "H" or resizeMode == "Both" then
+				newH = math.clamp(rStartH + deltaY, 320, 720)
+			end
+			main.Size = UDim2.new(0, newW, 0, newH)
+			main.Position = UDim2.new(
+				main.Position.X.Scale, rStartPosX + (newW - rStartW) * 0.5,
+				main.Position.Y.Scale, rStartPosY + (newH - rStartH) * 0.5
+			)
+			if Window._syncEspPreview then Window._syncEspPreview() end
+		end
 	end)
 
 	-------------------- Sidebar --------------------
@@ -3456,48 +3509,6 @@ function Crystalized:CreateWindow(options)
 		Position = UDim2.new(0, 151, 0, 46), Size = UDim2.new(1, -151, 1, -46),
 		BackgroundTransparency = 1, Parent = main,
 	})
-
-	-------------------- Resize grip --------------------
-	local grip = Create("TextButton", {
-		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -4, 1, -4),
-		Size = UDim2.new(0, 18, 0, 18), Text = "", AutoButtonColor = false,
-		BackgroundTransparency = 1, ZIndex = 6, Parent = main,
-	}, {
-		Create("TextLabel", {
-			Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "/",
-			Rotation = 45, Font = Enum.Font.GothamMedium, TextSize = 12,
-			TextColor3 = Color3.new(1, 1, 1), TextTransparency = 0.6,
-		}),
-	})
-	AttachTooltip(grip, "Drag to resize")
-	local resizing = false
-	local rStartMouse, rStartSize, rStartPos = nil, nil, nil
-	grip.InputBegan:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-			resizing = true
-			rStartMouse = Vector2.new(input.Position.X, input.Position.Y)
-			rStartSize  = Vector2.new(main.AbsoluteSize.X, main.AbsoluteSize.Y)
-			rStartPos   = Vector2.new(main.AbsolutePosition.X, main.AbsolutePosition.Y)
-		end
-	end)
-	UserInputService.InputEnded:Connect(function(input)
-		if input.UserInputType == Enum.UserInputType.MouseButton1
-		or input.UserInputType == Enum.UserInputType.Touch then
-			resizing = false
-		end
-	end)
-	UserInputService.InputChanged:Connect(function(input)
-		if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement
-		or input.UserInputType == Enum.UserInputType.Touch) and rStartMouse then
-			local s = (main.UIScale and main.UIScale.Scale) or 1
-			local delta = (Vector2.new(input.Position.X, input.Position.Y) - rStartMouse) / s
-			local newW = math.clamp(rStartSize.X / s + delta.X, 460, 900)
-			local newH = math.clamp(rStartSize.Y / s + delta.Y, 320, 700)
-			main.Size = UDim2.new(0, newW, 0, newH)
-			main.Position = UDim2.new(0, rStartPos.X + (newW * s) * 0.5, 0, rStartPos.Y + (newH * s) * 0.5)
-		end
-	end)
 
 	-------------------- BACKGROUND FX (snow / sparkles) --------------------
 	local refreshFXRadios = nil      -- assigned once the gear menu below exists
