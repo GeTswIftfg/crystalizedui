@@ -4189,7 +4189,7 @@ function Crystalized:CreateWindow(options)
 
 	-------------------- Auto Settings tab --------------------
 	if options.ShowSettings ~= false then
-		BuildSettingsTab(self)
+		BuildSettingsTab(Window)
 	end
 
 	-------------------- FPS / ping updater --------------------
