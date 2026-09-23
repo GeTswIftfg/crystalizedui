@@ -1,7 +1,7 @@
 --[[
 +============================================================+
 |              CRYSTALIZED UI LIBRARY  v1.0.0               |
-|              .gg/crystalized                              |
+|              .gg/crystalizedd                             |
 +============================================================+
 |  A full-featured script hub UI library for Roblox.        |
 |                                                            |
@@ -712,16 +712,17 @@ RunService.RenderStepped:Connect(function()
 end)
 
 --============================================================--
--- NOTIFICATIONS (ultra-compact bottom-right stack: tiny, sleek, lightweight)
+-- NOTIFICATIONS (ultra-compact micro-pill stack)
 --============================================================--
 local NotifHolder = Create("Frame", {
 	Name = "Notifications", AnchorPoint = Vector2.new(1, 1), ZIndex = 60,
-	Position = UDim2.new(1, -8, 1, -8), Size = UDim2.new(0, 135, 0, 0),
-	AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = Gui,
+	Position = UDim2.new(1, -10, 1, -10), Size = UDim2.new(0, 0, 0, 0),
+	AutomaticSize = Enum.AutomaticSize.XY, BackgroundTransparency = 1, Parent = Gui,
 }, {
 	Create("UIListLayout", {
 		Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder,
 		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
 	}),
 })
 
@@ -731,26 +732,30 @@ local notifActive, notifQueue = 0, {}
 
 local function NotifyNow(opts)
 	opts = opts or {}
-	local duration = opts.Duration or 3.5
+	local duration = opts.Duration or 2
 	local wrapper = Create("Frame", {
-		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(0, 0, 0, 24), AutomaticSize = Enum.AutomaticSize.X,
 		BackgroundTransparency = 1, Parent = NotifHolder,
 	})
 	local card = Create("TextButton", {
-		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		Size = UDim2.new(0, 0, 0, 24), AutomaticSize = Enum.AutomaticSize.X,
 		Position = UDim2.new(1, 30, 0, 0), ClipsDescendants = true,
 		Text = "", AutoButtonColor = false,
 		BorderSizePixel = 0, Parent = wrapper,
 	}, {
-		Create("UICorner", { CornerRadius = UDim.new(0, 5) }),
+		Create("UICorner", { CornerRadius = UDim.new(1, 0) }),
 		Create("UIPadding", {
-			PaddingTop = UDim.new(0, 3), PaddingBottom = UDim.new(0, 3),
-			PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 5),
+			PaddingTop = UDim.new(0, 0), PaddingBottom = UDim.new(0, 0),
+			PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 10),
 		}),
-		Create("UIListLayout", { Padding = UDim.new(0, 1), SortOrder = Enum.SortOrder.LayoutOrder }),
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal,
+			VerticalAlignment = Enum.VerticalAlignment.Center,
+			Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder,
+		}),
 	})
 	Paint(card, "BackgroundColor3", "Topbar")
-	local stroke = Create("UIStroke", { Thickness = 1, Transparency = 0.5, Parent = card })
+	local stroke = Create("UIStroke", { Thickness = 1, Transparency = 0.55, Parent = card })
 	Paint(stroke, "Color", "Stroke")
 
 	local typeInfo = {
@@ -765,57 +770,39 @@ local function NotifyNow(opts)
 		tinfo = custom and { c = custom } or nil
 	end
 
-	-- slim accent bar on the left
-	local bar = Create("Frame", {
-		Size = UDim2.new(0, 2, 1, -6), Position = UDim2.new(0, 0, 0, 3),
-		BorderSizePixel = 0, Parent = card,
+	-- live colored dot
+	local dot = Create("Frame", {
+		Size = UDim2.new(0, 6, 0, 6), BorderSizePixel = 0, LayoutOrder = 1, Parent = card,
 	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-	if tinfo then bar.BackgroundColor3 = tinfo.c
-	else Paint(bar, "BackgroundColor3", "Accent") end
+	if tinfo then dot.BackgroundColor3 = tinfo.c
+	else Paint(dot, "BackgroundColor3", "Accent") end
 
-	-- slim progress bar along the bottom of the toast
-	local ptrack = Create("Frame", {
-		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 4, 1, -1),
-		Size = UDim2.new(1, -8, 0, 1.5), BackgroundTransparency = 0.8,
-		BorderSizePixel = 0, Parent = wrapper, ZIndex = 7,
-	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-	ptrack.BackgroundColor3 = Color3.new(0, 0, 0)
-	local pfill = Create("Frame", {
-		Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 0,
-		BorderSizePixel = 0, Parent = ptrack, ZIndex = 8,
-	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-	if tinfo then
-		pfill.BackgroundColor3 = tinfo.c
-	else
-		Paint(pfill, "BackgroundColor3", "Accent")
-	end
 	local title = Create("TextLabel", {
-		Size = UDim2.new(1, 0, 0, 11), BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left,
-		Text = tostring(opts.Title or "Notification"), LayoutOrder = 1, Parent = card,
+		AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 9.5,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = tostring(opts.Title or "Notification"), LayoutOrder = 2, Parent = card,
 	})
 	if tinfo then title.TextColor3 = tinfo.c
 	else Paint(title, "TextColor3", "Text") end
+
 	if opts.Content and opts.Content ~= "" then
 		local body = Create("TextLabel", {
-			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-			BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 8,
-			TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
-			Text = tostring(opts.Content), LayoutOrder = 2, Parent = card,
+			AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
+			BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 8.5,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			Text = tostring(opts.Content), LayoutOrder = 3, Parent = card,
 		})
 		Paint(body, "TextColor3", "SubText")
 	end
+
 	-- slide + grow in, bouncy
-	Tween(card, 0.4, { Position = UDim2.new(0, 0, 0, 0) })
-	-- progress bar drains over the toast's lifetime
-	TweenService:Create(pfill, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
-		Size = UDim2.new(0, 0, 1, 0),
-	}):Play()
+	Tween(card, 0.35, { Position = UDim2.new(0, 0, 0, 0) })
 	local dismissed = false
 	local function dismiss()
 		if dismissed then return end
 		dismissed = true
-		local out = Tween(card, 0.25, { Position = UDim2.new(1, 40, 0, 0) }, "Snappy")
+		local out = Tween(card, 0.22, { Position = UDim2.new(1, 40, 0, 0) }, "Snappy")
 		out.Completed:Wait()
 		wrapper:Destroy()
 		notifActive = notifActive - 1
@@ -1037,7 +1024,7 @@ Paint(pillLogo, "ImageColor3", "Accent")
 Crystalized._pillLogo = pillLogo
 local pillText = Create("TextLabel", {
 	AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0), BackgroundTransparency = 1,
-	Font = Enum.Font.GothamSemibold, TextSize = 12, Text = ".gg/crystalized",
+	Font = Enum.Font.GothamSemibold, TextSize = 12, Text = ".gg/crystalizedd",
 	LayoutOrder = 2, Parent = Pill,
 })
 Paint(pillText, "TextColor3", "Text")
@@ -1446,8 +1433,8 @@ end
 Crystalized.IsPremium   = false
 Crystalized._premiumEls = {}
 Crystalized.PremiumKeys = { "crystal123" }              -- < REPLACE with your real keys
-Crystalized.BuyLink     = "discord.gg/crystalized"      -- where BUY sends people
-Crystalized.DiscordInvite = "discord.gg/crystalized"    -- sidebar footer chip copies this
+Crystalized.BuyLink     = "discord.gg/crystalizedd"      -- where BUY sends people
+Crystalized.DiscordInvite = "discord.gg/crystalizedd"    -- sidebar footer chip copies this
 
 function Crystalized:IsKeyValid(key)
 	key = string.lower(tostring(key or ""))
@@ -1685,7 +1672,8 @@ end
 -- Makes the base row inside a section + registers search text
 local function MakeRow(sectionHolder, height, searchText)
 	local row = Create("Frame", {
-		Size = UDim2.new(1, 0, 0, height), BorderSizePixel = 0, Parent = sectionHolder,
+		Size = UDim2.new(1, 0, 0, height), ClipsDescendants = true,
+		BorderSizePixel = 0, Parent = sectionHolder,
 	}, { Create("UICorner", { CornerRadius = UDim.new(0, 6) }) })
 	Paint(row, "BackgroundColor3", "Element")
 	row:SetAttribute("IsRow", true)
@@ -1695,9 +1683,10 @@ end
 
 local function MakeNameLabel(parent, name)
 	local label = Create("TextLabel", {
-		Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(1, -90, 1, 0),
-		BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 13,
-		TextXAlignment = Enum.TextXAlignment.Left, Text = tostring(name), Parent = parent,
+		Position = UDim2.new(0, 8, 0, 0), Size = UDim2.new(1, -60, 1, 0),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = tostring(name), Parent = parent,
 	})
 	local entry = Paint(label, "TextColor3", "Text")
 	return label, entry
@@ -1812,13 +1801,13 @@ end
 
 --> TOGGLE (with optional keybind chip on the right) ------------
 local function BuildToggle(section, opts)
-	local row = MakeRow(section._holder, 38, opts.Name)
+	local row = MakeRow(section._holder, 34, opts.Name)
 	local nameLbl, nameEntry = MakeNameLabel(row, opts.Name)
 	AttachTooltip(row, opts.Description)
 	-- switch
 	local switch = Create("Frame", {
-		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0),
-		Size = UDim2.new(0, 38, 0, 20), BorderSizePixel = 0, Parent = row,
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -8, 0.5, 0),
+		Size = UDim2.new(0, 32, 0, 17), BorderSizePixel = 0, Parent = row,
 	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
 	local switchEntry = Paint(switch, "BackgroundColor3", "ToggleOff")
 	-- per-element styling: Color = "Azure"/"#hex"/Color3, or Danger = true (hot red + !)
@@ -1830,7 +1819,7 @@ local function BuildToggle(section, opts)
 	end
 	local knob = Create("Frame", {
 		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 3, 0.5, 0),
-		Size = UDim2.new(0, 14, 0, 14), BackgroundColor3 = Color3.new(1, 1, 1),
+		Size = UDim2.new(0, 11, 0, 11), BackgroundColor3 = Color3.new(1, 1, 1),
 		BorderSizePixel = 0, Parent = switch,
 	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
 	local click = Create("TextButton", {
@@ -1845,15 +1834,15 @@ local function BuildToggle(section, opts)
 		switchEntry.c = state and elemColor or nil -- custom color only while ON
 		switchEntry.r = (state and not elemColor) and "Accent" or "ToggleOff"
 		Recolor(switchEntry, not animate)
-		local target = state and UDim2.new(1, -17, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
-		if animate then Tween(knob, 0.4, { Position = target }) else knob.Position = target end
+		local target = state and UDim2.new(1, -14, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+		if animate then Tween(knob, 0.35, { Position = target }) else knob.Position = target end
 		if opts.Flag then Crystalized.Flags[opts.Flag] = state end
 		if fireCallback then
 			if opts.Notify ~= false and not Crystalized._silent then
 				Crystalized:Notify({
 					Title = tostring(opts.Name),
 					Content = state and "Enabled" or "Disabled",
-					Duration = 1.6,
+					Duration = 1.5,
 				})
 			end
 			Fire(opts.Callback, state)
@@ -1877,30 +1866,30 @@ local function BuildToggle(section, opts)
 	if opts.Keybind and HAS_KEYBOARD then
 		local chip = Create("TextButton", {
 			AnchorPoint = Vector2.new(1, 0.5),
-			Position = UDim2.new(1, -58, 0.5, 0), AutomaticSize = Enum.AutomaticSize.X,
-			Size = UDim2.new(0, 0, 0, 20), Text = "", AutoButtonColor = false,
+			Position = UDim2.new(1, -44, 0.5, 0), AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(0, 0, 0, 17), Text = "", AutoButtonColor = false,
 			BorderSizePixel = 0, ZIndex = 3, Parent = row,
 		}, {
-			Create("UICorner", { CornerRadius = UDim.new(0, 5) }),
-			Create("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }),
+			Create("UICorner", { CornerRadius = UDim.new(0, 4) }),
+			Create("UIPadding", { PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5) }),
 		})
 		Paint(chip, "BackgroundColor3", "Card")
 		local chipLabel = Create("TextLabel", {
 			AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
-			BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 10,
+			BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 9.5,
 			Parent = chip,
 		})
 		Paint(chipLabel, "TextColor3", "SubText")
 		-- settings cog to the LEFT of the chip: opens the PRESS/HOLD mode menu
 		local gear = Create("TextButton", {
-			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0, -6, 0.5, 0),
-			Size = UDim2.new(0, 17, 0, 17), Text = "",
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0, -4, 0.5, 0),
+			Size = UDim2.new(0, 13, 0, 13), Text = "",
 			AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 4, Parent = chip,
 		}, {
-			Create("UICorner", { CornerRadius = UDim.new(0, 4) }),
+			Create("UICorner", { CornerRadius = UDim.new(0, 3) }),
 			Create("ImageLabel", {
 				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
-				Size = UDim2.new(0, 11, 0, 11), BackgroundTransparency = 1,
+				Size = UDim2.new(0, 9, 0, 9), BackgroundTransparency = 1,
 				Image = "rbxassetid://10734950309", ScaleType = Enum.ScaleType.Fit,
 			}),
 		})
@@ -2449,7 +2438,8 @@ local function BuildDiscordCard(section, opts)
 	if stats ~= "" then
 		local st = Create("TextLabel", {
 			Size = UDim2.new(1, 0, 0, 13), BackgroundTransparency = 1, LayoutOrder = 3,
-			Font = Enum.Font.GothamMedium, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left,
+			Font = Enum.Font.GothamMedium, TextSize = 9.5, TextXAlignment = Enum.TextXAlignment.Left,
+			TextTruncate = Enum.TextTruncate.AtEnd,
 			Text = stats, Parent = card,
 		})
 		Paint(st, "TextColor3", "SubText")
@@ -2458,7 +2448,8 @@ local function BuildDiscordCard(section, opts)
 	-- invite as its own monospace chip line, then a compact copy button
 	local invLbl = Create("TextLabel", {
 		Size = UDim2.new(1, 0, 0, 13), BackgroundTransparency = 1, LayoutOrder = 4,
-		Font = Enum.Font.Code, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
+		Font = Enum.Font.Code, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left,
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextColor3 = Color3.fromRGB(139, 147, 248), Text = invite, Parent = card,
 	})
 	local copy = Create("TextButton", {
@@ -2487,6 +2478,43 @@ local function BuildDiscordCard(section, opts)
 			if copy and copy.Parent then copy.Text = "Copy Invite" end
 		end)
 	end)
+
+	-- live Discord invite resolver (auto-fetches server name, description, live online/members)
+	if opts.Live ~= false then
+		task.spawn(function()
+			local cleanCode = invite:gsub("^https?://", ""):gsub("^discord%.gg/", ""):gsub("^discord%.com/invite/", ""):gsub("/+$", "")
+			if cleanCode == "" then return end
+			local apiUrl = "https://discord.com/api/v9/invites/" .. cleanCode .. "?with_counts=true"
+			local success, body = pcall(function()
+				local req = (syn and syn.request) or (http and http.request) or http_request or request
+				if req then
+					local res = req({ Url = apiUrl, Method = "GET" })
+					return res and (res.Body or res.body)
+				elseif type(game.HttpGet) == "function" then
+					return game:HttpGet(apiUrl)
+				end
+				return nil
+			end)
+			if success and type(body) == "string" and body:sub(1, 1) == "{" then
+				local jsonOk, data = pcall(function() return game:GetService("HttpService"):JSONDecode(body) end)
+				if jsonOk and type(data) == "table" and data.guild then
+					local g = data.guild
+					if g.name and not opts.Name then nameLbl.Text = tostring(g.name) end
+					if g.description and desc and not opts.Description then desc.Text = tostring(g.description) end
+					local onlineCount = data.approximate_presence_count or 0
+					local memberCount = data.approximate_member_count or 0
+					local function fmt(n)
+						local s = tostring(n)
+						local left, num, right = string.match(s, "^([^%d]*%d)(%d*)(.-)$")
+						return left .. (num:reverse():gsub("(%d%d%d)", "%1,"):reverse()) .. right
+					end
+					if st then
+						st.Text = "* " .. fmt(onlineCount) .. " online    * " .. fmt(memberCount) .. " members"
+					end
+				end
+			end
+		end)
+	end
 	local Card = {}
 	return Card
 end
@@ -3001,7 +3029,7 @@ end
 function Crystalized:CreateWindow(options)
 	options = options or {}
 	local windowName  = options.Name or "Crystalized"
-	local tagline     = options.Tagline or ".gg/crystalized"
+	local tagline     = options.Tagline or ".gg/crystalizedd"
 	local toggleKey   = options.ToggleKey or Enum.KeyCode.RightShift
 	local startAccent = options.Accent or "Crimson"
 
@@ -3381,7 +3409,7 @@ function Crystalized:CreateWindow(options)
 
 	-------------------- Sidebar --------------------
 	local sidebar = Create("Frame", {
-		Position = UDim2.new(0, 0, 0, 46), Size = UDim2.new(0, 150, 1, -46),
+		Position = UDim2.new(0, 0, 0, 46), Size = UDim2.new(0, 136, 1, -46),
 		BorderSizePixel = 0, Parent = main,
 	})
 	Paint(sidebar, "BackgroundColor3", "Sidebar")
@@ -3515,7 +3543,7 @@ function Crystalized:CreateWindow(options)
 	-- (the bottom status strip was removed per request - the tagline lives up top,
 	--   so the hub now uses the full height for content)
 	local pages = Create("Frame", {
-		Position = UDim2.new(0, 151, 0, 46), Size = UDim2.new(1, -151, 1, -46),
+		Position = UDim2.new(0, 137, 0, 46), Size = UDim2.new(1, -137, 1, -46),
 		BackgroundTransparency = 1, Parent = main,
 	})
 
@@ -4030,8 +4058,8 @@ function Crystalized:CreateWindow(options)
 			AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(0, 0, 0, 0),
 			Visible = false, Parent = pages,
 		}, { Create("UIPadding", {
-			PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 18),
-			PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 28),
+			PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 16),
+			PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 20),
 		}) })
 		Paint(page, "ScrollBarImageColor3", "Accent")
 		page.ScrollBarImageTransparency = 0.25
@@ -4040,16 +4068,17 @@ function Crystalized:CreateWindow(options)
 			BackgroundTransparency = 1, Parent = page,
 		}, {
 			Create("UIListLayout", {
-				FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 14),
+				FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 10),
 				SortOrder = Enum.SortOrder.LayoutOrder,
 			}),
 		})
 		local function makeCol(layoutOrder)
 			return Create("Frame", {
-				Size = UDim2.new(0.5, -7, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-				BackgroundTransparency = 1, LayoutOrder = layoutOrder, Parent = cols,
+				Size = UDim2.new(0.5, -5, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1, ClipsDescendants = true,
+				LayoutOrder = layoutOrder, Parent = cols,
 			}, {
-				Create("UIListLayout", { Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder }),
+				Create("UIListLayout", { Padding = UDim.new(0, 10), SortOrder = Enum.SortOrder.LayoutOrder }),
 			})
 		end
 		Tab._left  = makeCol(1)
