@@ -712,15 +712,15 @@ RunService.RenderStepped:Connect(function()
 end)
 
 --============================================================--
--- NOTIFICATIONS (bottom-right stack)
+-- NOTIFICATIONS (bottom-right stack: compact, modern, lightweight)
 --============================================================--
 local NotifHolder = Create("Frame", {
-	Name = "Notifications", AnchorPoint = Vector2.new(1, 1), ZIndex = 5,
-	Position = UDim2.new(1, -14, 1, -14), Size = UDim2.new(0, 290, 1, -28),
+	Name = "Notifications", AnchorPoint = Vector2.new(1, 1), ZIndex = 60,
+	Position = UDim2.new(1, -14, 1, -14), Size = UDim2.new(0, 220, 1, -28),
 	BackgroundTransparency = 1, Parent = Gui,
 }, {
 	Create("UIListLayout", {
-		Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder,
 		VerticalAlignment = Enum.VerticalAlignment.Bottom,
 	}),
 })
@@ -731,35 +731,27 @@ local notifActive, notifQueue = 0, {}
 
 local function NotifyNow(opts)
 	opts = opts or {}
-	local duration = opts.Duration or 4
-	-- wrapper animates the slide-in without fighting the UIListLayout
+	local duration = opts.Duration or 3.5
 	local wrapper = Create("Frame", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1, Parent = NotifHolder,
 	})
-	-- soft shadow chip behind every toast (per answer 25)
-	local toastShadow = Create("Frame", {
-		Size = UDim2.new(1, -6, 1, -6), Position = UDim2.new(0, 3, 0, 5),
-		BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.72,
-		BorderSizePixel = 0, ZIndex = math.max(0, (NotifHolder.ZIndex or 1) - 1), Parent = wrapper,
-	}, { Create("UICorner", { CornerRadius = UDim.new(0, 8) }) })
 	local card = Create("Frame", {
 		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-		Position = UDim2.new(1, 40, 0, 0), ClipsDescendants = true,
+		Position = UDim2.new(1, 30, 0, 0), ClipsDescendants = true,
 		BorderSizePixel = 0, Parent = wrapper,
 	}, {
-		Create("UICorner", { CornerRadius = UDim.new(0, 8) }),
+		Create("UICorner", { CornerRadius = UDim.new(0, 7) }),
 		Create("UIPadding", {
-			PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
-			PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 12),
+			PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8),
+			PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 10),
 		}),
 		Create("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }),
 	})
-	Paint(card, "BackgroundColor3", "Topbar", 0.03)
-	local stroke = Create("UIStroke", { Thickness = 1, Transparency = 0.4, Parent = card })
+	Paint(card, "BackgroundColor3", "Topbar")
+	local stroke = Create("UIStroke", { Thickness = 1, Transparency = 0.5, Parent = card })
 	Paint(stroke, "Color", "Stroke")
-	-- typed toasts: Type = "success"|"info"|"warn"|"error" (or Color = ...) tints
-	-- the spine + bottom progress bar + a small lucide glyph. Default = your accent.
+
 	local typeInfo = {
 		success = { c = Color3.fromRGB(107, 229, 133) },
 		info    = { c = Color3.fromRGB(79, 163, 255) },
@@ -771,33 +763,34 @@ local function NotifyNow(opts)
 		local custom = ResolveColor(opts.Color)
 		tinfo = custom and { c = custom } or nil
 	end
-	-- accent bar on the left
+
+	-- slim accent bar on the left
 	local bar = Create("Frame", {
-		Size = UDim2.new(0, 3, 1, -14), Position = UDim2.new(0, 0, 0, 7),
+		Size = UDim2.new(0, 2.5, 1, -10), Position = UDim2.new(0, 0, 0, 5),
 		BorderSizePixel = 0, Parent = card,
 	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
 	if tinfo then bar.BackgroundColor3 = tinfo.c
 	else Paint(bar, "BackgroundColor3", "Accent") end
-	-- seconds-left progress bar along the bottom of the toast
+
+	-- slim progress bar along the bottom of the toast
 	local ptrack = Create("Frame", {
-		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 10, 1, -4),
-		Size = UDim2.new(1, -20, 0, 3), BackgroundTransparency = 0.7,
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 6, 1, -2),
+		Size = UDim2.new(1, -12, 0, 2), BackgroundTransparency = 0.8,
 		BorderSizePixel = 0, Parent = wrapper, ZIndex = 7,
 	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
-	Paint(ptrack, "BackgroundColor3", "Accent")
+	ptrack.BackgroundColor3 = Color3.new(0, 0, 0)
 	local pfill = Create("Frame", {
 		Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 0,
 		BorderSizePixel = 0, Parent = ptrack, ZIndex = 8,
 	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
 	if tinfo then
-		ptrack.BackgroundColor3 = tinfo.c
 		pfill.BackgroundColor3 = tinfo.c
 	else
 		Paint(pfill, "BackgroundColor3", "Accent")
 	end
 	local title = Create("TextLabel", {
-		Size = UDim2.new(1, 0, 0, 15), BackgroundTransparency = 1,
-		Font = Enum.Font.GothamSemibold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
 		Text = tostring(opts.Title or "Notification"), LayoutOrder = 1, Parent = card,
 	})
 	if tinfo then title.TextColor3 = tinfo.c
@@ -805,7 +798,7 @@ local function NotifyNow(opts)
 	if opts.Content and opts.Content ~= "" then
 		local body = Create("TextLabel", {
 			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-			BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 12,
+			BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 10,
 			TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
 			Text = tostring(opts.Content), LayoutOrder = 2, Parent = card,
 		})
@@ -1482,6 +1475,9 @@ end
 
 -- the "ENTER KEY / BUY / REDEEM" modal (clean purchase flow:
 -- diamond logo -> which feature -> key field -> Buy | Redeem)
+--============================================================--
+-- PREMIUM REDEMPTION MODAL (ultra-sleek gold access portal)
+--============================================================--
 local function ShowPremiumPrompt(featureName)
 	if Crystalized.IsPremium then return end
 	local dim = Create("TextButton", {
@@ -1491,62 +1487,57 @@ local function ShowPremiumPrompt(featureName)
 	TweenService:Create(dim, TweenInfo.new(0.25, Enum.EasingStyle.Quint), { BackgroundTransparency = 0.45 }):Play()
 	local card = Create("TextButton", {
 		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
-		Size = UDim2.new(0, 340, 0, 254), Text = "", AutoButtonColor = false,
+		Size = UDim2.new(0, 340, 0, 250), Text = "", AutoButtonColor = false,
 		BorderSizePixel = 0, ZIndex = 91, Parent = dim,
 	}, {
 		Create("UICorner", { CornerRadius = UDim.new(0, 12) }),
 		Create("UIScale", { Scale = 0.8 }),
 	})
-	Paint(card, "BackgroundColor3", "Topbar", 0.02)
-	local cstroke = Create("UIStroke", { Thickness = 1, Color = Theme.Gold, Transparency = 0.35, Parent = card })
+	Paint(card, "BackgroundColor3", "Topbar")
+	local cstroke = Create("UIStroke", { Thickness = 1.2, Color = Theme.Gold, Transparency = 0.35, Parent = card })
 
-	-- gold diamond logo (matches the topbar branding)
-	local logo = Create("Frame", {
-		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 16),
-		Size = UDim2.new(0, 26, 0, 26), BorderSizePixel = 0, Rotation = 45,
-		ZIndex = 92, Parent = card, BackgroundColor3 = Theme.Gold,
-	}, {
-		Create("UICorner", { CornerRadius = UDim.new(0, 6) }),
-		Create("TextLabel", {
-			Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Rotation = -45,
-			Font = Enum.Font.GothamBold, TextSize = 15, Text = "*",
-			TextColor3 = Color3.fromRGB(46, 33, 6), ZIndex = 93,
-		}),
+	-- crown icon at the top
+	local crownIcon = Create("ImageLabel", {
+		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 18),
+		Size = UDim2.new(0, 28, 0, 28), BackgroundTransparency = 1,
+		Image = "rbxassetid://10709818626", ScaleType = Enum.ScaleType.Fit,
+		ImageColor3 = Theme.Gold, ZIndex = 92, Parent = card,
 	})
+
 	local title = Create("TextLabel", {
-		Position = UDim2.new(0, 0, 0, 48), Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold, TextSize = 16, Text = "Premium Feature",
+		Position = UDim2.new(0, 0, 0, 52), Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold, TextSize = 16, Text = "Crystalized Premium",
 		TextColor3 = Theme.Gold, ZIndex = 92, Parent = card,
 	})
-	-- feature name as a gold-bordered chip
+	-- feature name chip
 	local chip = Create("TextLabel", {
 		AnchorPoint = Vector2.new(0.5, 0),
-		Position = UDim2.new(0.5, 0, 0, 72), AutomaticSize = Enum.AutomaticSize.X,
+		Position = UDim2.new(0.5, 0, 0, 75), AutomaticSize = Enum.AutomaticSize.X,
 		Size = UDim2.new(0, 0, 0, 20), BackgroundTransparency = 1,
-		Font = Enum.Font.GothamSemibold, TextSize = 11, Text = "PROTECTED  -  " .. tostring(featureName),
-		TextColor3 = Theme.Gold, ZIndex = 92, Parent = card,
+		Font = Enum.Font.GothamSemibold, TextSize = 11, Text = "PRO ACCESS  -  " .. tostring(featureName or "Feature"),
+		TextColor3 = Color3.fromRGB(255, 220, 120), ZIndex = 92, Parent = card,
 	}, {
 		Create("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }),
 		Create("UIStroke", { Thickness = 1, Color = Theme.Gold, Transparency = 0.55 }),
 		Create("UICorner", { CornerRadius = UDim.new(1, 0) }),
 	})
 	local sub = Create("TextLabel", {
-		Position = UDim2.new(0, 24, 0, 98), Size = UDim2.new(1, -48, 0, 14), BackgroundTransparency = 1,
+		Position = UDim2.new(0, 24, 0, 100), Size = UDim2.new(1, -48, 0, 14), BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium, TextSize = 11,
-		Text = "A key instantly unlocks every gold feature.",
+		Text = "Unlock every pro feature with a single license key.",
 		ZIndex = 92, Parent = card,
 	})
 	Paint(sub, "TextColor3", "SubText")
 
 	local keybox = Create("TextBox", {
-		Position = UDim2.new(0, 22, 0, 122), Size = UDim2.new(1, -44, 0, 30),
-		BorderSizePixel = 0, Font = Enum.Font.GothamSemibold, TextSize = 13, Text = "",
+		Position = UDim2.new(0, 22, 0, 124), Size = UDim2.new(1, -44, 0, 32),
+		BorderSizePixel = 0, Font = Enum.Font.GothamSemibold, TextSize = 12, Text = "",
 		TextXAlignment = Enum.TextXAlignment.Left, PlaceholderText = "Enter key... (demo: crystal123)",
 		ClearTextOnFocus = false, ZIndex = 92, Parent = card,
 	}, {
 		Create("UICorner", { CornerRadius = UDim.new(0, 7) }),
 		Create("UIPadding", { PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 11) }),
-		Create("UIStroke", { Thickness = 1, Color = Theme.Gold, Transparency = 0.72 }),
+		Create("UIStroke", { Thickness = 1, Color = Theme.Gold, Transparency = 0.65 }),
 	})
 	Paint(keybox, "BackgroundColor3", "Element")
 	Paint(keybox, "TextColor3", "Text")
@@ -1554,7 +1545,7 @@ local function ShowPremiumPrompt(featureName)
 
 	-- tidy info box: slides in after BUY copies the link
 	local info = Create("TextLabel", {
-		Position = UDim2.new(0, 22, 0, 160), Size = UDim2.new(1, -44, 0, 0),
+		Position = UDim2.new(0, 22, 0, 162), Size = UDim2.new(1, -44, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		BackgroundTransparency = 1, Visible = false, TextWrapped = true,
 		Font = Enum.Font.GothamSemibold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
@@ -1569,23 +1560,25 @@ local function ShowPremiumPrompt(featureName)
 	Paint(info, "BackgroundColor3", "Element")
 	Paint(info, "TextColor3", "SubText")
 
-	-- actions: gold BUY (copies the link) + accent REDEEM
+	-- actions: gold BUY + gold REDEEM
 	local buyBtn = Create("TextButton", {
-		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 22, 1, -18),
-		Size = UDim2.new(0.5, -27, 0, 34),
-		Text = "Buy Key  ->", Font = Enum.Font.GothamBold, TextSize = 13,
-		BackgroundColor3 = Theme.Gold, TextColor3 = Color3.fromRGB(46, 33, 6),
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 22, 1, -16),
+		Size = UDim2.new(0.5, -27, 0, 32),
+		Text = "Buy Key  ->", Font = Enum.Font.GothamBold, TextSize = 12,
+		BackgroundColor3 = Color3.fromRGB(45, 38, 22), TextColor3 = Theme.Gold,
 		AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 92, Parent = card,
-	}, { Create("UICorner", { CornerRadius = UDim.new(0, 8) }) })
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 7) }),
+		Create("UIStroke", { Thickness = 1, Color = Theme.Gold, Transparency = 0.5 }),
+	})
 	local redeemBtn = Create("TextButton", {
-		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -22, 1, -18),
-		Size = UDim2.new(0.5, -27, 0, 34), Text = "Redeem",
-		Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = Color3.new(1, 1, 1),
-		AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 92, Parent = card,
-	}, { Create("UICorner", { CornerRadius = UDim.new(0, 8) }) })
-	Paint(redeemBtn, "BackgroundColor3", "Accent")
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -22, 1, -16),
+		Size = UDim2.new(0.5, -27, 0, 32), Text = "Redeem Key",
+		Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = Color3.fromRGB(34, 25, 4),
+		BackgroundColor3 = Theme.Gold, AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 92, Parent = card,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 7) }) })
 
-	-- tiny X in the corner as the obvious dismiss
+	-- X in the top-right corner to dismiss
 	local xbtn = Create("TextButton", {
 		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 10),
 		Size = UDim2.new(0, 20, 0, 20), Text = "X", Font = Enum.Font.GothamBold, TextSize = 11,
@@ -1602,9 +1595,8 @@ local function ShowPremiumPrompt(featureName)
 	xbtn.MouseButton1Click:Connect(dismiss)
 
 	local function showInfo(text)
-		-- card grows a touch so the info box never squeezes the buttons
 		TweenService:Create(card, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {
-			Size = UDim2.new(0, 340, 0, 284),
+			Size = UDim2.new(0, 340, 0, 280),
 		}):Play()
 		info.Text = text
 		info.Visible = true
@@ -1616,16 +1608,14 @@ local function ShowPremiumPrompt(featureName)
 	buyBtn.MouseButton1Click:Connect(function()
 		if type(setclipboard) == "function" then
 			pcall(setclipboard, Crystalized.BuyLink)
-			-- the info box tells the player exactly what to do next
 			showInfo("<font color=\"#7ce29b\">Copied!</font> <b>" .. Crystalized.BuyLink ..
-				"</b> is in your clipboard - paste it into your browser, buy a key, then redeem it here.")
+				"</b> is in your clipboard - paste into your browser to buy.")
 		else
-			showInfo("No clipboard on this device. Go to: <b>" .. Crystalized.BuyLink .. "</b>")
+			showInfo("Go to: <b>" .. Crystalized.BuyLink .. "</b>")
 		end
 	end)
 
 	local function shake()
-		-- little left-right wiggle for wrong keys
 		local baseX = card.Position.X
 		for i = 1, 3 do
 			TweenService:Create(card, TweenInfo.new(0.05), { Position = UDim2.new(baseX.Scale, baseX.Offset - 7, 0.5, 0) }):Play()
@@ -1645,12 +1635,14 @@ local function ShowPremiumPrompt(featureName)
 			task.spawn(shake)
 			keybox.Text = ""
 			keybox.PlaceholderText = "Invalid key!"
-			keybox.PlaceholderColor3 = Color3.fromRGB(240, 90, 100)
 		end
 	end
 	redeemBtn.MouseButton1Click:Connect(tryRedeem)
 	keybox.FocusLost:Connect(function(enter) if enter then tryRedeem() end end)
-	Tween(card.UIScale, 0.45, { Scale = 1 }, "Pop")
+
+	task.defer(function()
+		Tween(card.UIScale, 0.45, { Scale = 1 }, "Pop")
+	end)
 end
 
 --============================================================--
@@ -1893,14 +1885,22 @@ local function BuildToggle(section, opts)
 			Parent = chip,
 		})
 		Paint(chipLabel, "TextColor3", "SubText")
-		-- # gear to the LEFT of the chip: opens the PRESS/HOLD mode menu
+		-- settings cog to the LEFT of the chip: opens the PRESS/HOLD mode menu
 		local gear = Create("TextButton", {
 			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0, -6, 0.5, 0),
-			Size = UDim2.new(0, 17, 0, 17), Text = "#", Font = Enum.Font.GothamBold, TextSize = 9,
+			Size = UDim2.new(0, 17, 0, 17), Text = "",
 			AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 4, Parent = chip,
-		}, { Create("UICorner", { CornerRadius = UDim.new(0, 4) }) })
+		}, {
+			Create("UICorner", { CornerRadius = UDim.new(0, 4) }),
+			Create("ImageLabel", {
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+				Size = UDim2.new(0, 11, 0, 11), BackgroundTransparency = 1,
+				Image = "rbxassetid://10734950309", ScaleType = Enum.ScaleType.Fit,
+			}),
+		})
 		Paint(gear, "BackgroundColor3", "Card")
-		local gearEntry = Paint(gear, "TextColor3", "SubText")
+		local gearImg = gear:FindFirstChildWhichIsA("ImageLabel")
+		local gearEntry = Paint(gearImg, "ImageColor3", "SubText")
 		local bind = RegisterBind(tostring(opts.Name), opts.Keybind, function()
 			state = not state
 			apply(true, true)
@@ -2243,14 +2243,22 @@ local function BuildKeybind(section, opts)
 		BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 11, Parent = chip,
 	})
 	Paint(chipLabel, "TextColor3", "Text")
-	-- # gear to the LEFT of the chip: opens the PRESS/HOLD mode menu
+	-- settings cog to the LEFT of the chip: opens the PRESS/HOLD mode menu
 	local gear = Create("TextButton", {
 		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0, -6, 0.5, 0),
-		Size = UDim2.new(0, 18, 0, 18), Text = "#", Font = Enum.Font.GothamBold, TextSize = 9,
+		Size = UDim2.new(0, 18, 0, 18), Text = "",
 		AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 4, Parent = chip,
-	}, { Create("UICorner", { CornerRadius = UDim.new(0, 4) }) })
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 4) }),
+		Create("ImageLabel", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+			Size = UDim2.new(0, 11, 0, 11), BackgroundTransparency = 1,
+			Image = "rbxassetid://10734950309", ScaleType = Enum.ScaleType.Fit,
+		}),
+	})
 	Paint(gear, "BackgroundColor3", "Card")
-	local gearEntry = Paint(gear, "TextColor3", "SubText")
+	local gearImg = gear:FindFirstChildWhichIsA("ImageLabel")
+	local gearEntry = Paint(gearImg, "ImageColor3", "SubText")
 
 	local bind
 	if opts.ExistingBind then
@@ -3210,22 +3218,44 @@ function Crystalized:CreateWindow(options)
 		AttachTooltip(btn, tooltipText)
 		return btn
 	end
+	local function makeTopIconButton(iconUri, offset, tooltipText)
+		local btn = Create("TextButton", {
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, offset, 0.5, 0),
+			Size = UDim2.new(0, 28, 0, 28), Text = "", AutoButtonColor = false,
+			BorderSizePixel = 0, Parent = topbar,
+		}, {
+			Create("UICorner", { CornerRadius = UDim.new(0, 7) }),
+			Create("ImageLabel", {
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+				Size = UDim2.new(0, 14, 0, 14), BackgroundTransparency = 1,
+				Image = iconUri, ScaleType = Enum.ScaleType.Fit,
+			}),
+		})
+		Paint(btn, "BackgroundColor3", "Element", 1)
+		local img = btn:FindFirstChildWhichIsA("ImageLabel")
+		local imgEntry = Paint(img, "ImageColor3", "SubText")
+		btn.MouseEnter:Connect(function()
+			TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quint), {
+				BackgroundColor3 = Theme.Element, BackgroundTransparency = 0,
+			}):Play()
+			imgEntry.r = "Text"
+			Recolor(imgEntry, true)
+		end)
+		btn.MouseLeave:Connect(function()
+			TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quint), {
+				BackgroundTransparency = 1,
+			}):Play()
+			imgEntry.r = "SubText"
+			Recolor(imgEntry, true)
+		end)
+		AttachTooltip(btn, tooltipText)
+		return btn
+	end
 	local closeBtn = makeTopButton("X", -12, "Close (asks you first)")
 	local minBtn   = makeTopButton("-", -46, "Minimize -- fades to the pill")
-	local gearBtn  = makeTopButton("#", -80, "Quick settings")
+	local gearBtn  = makeTopIconButton("rbxassetid://10734950309", -80, "Quick settings")
 	minBtn.MouseButton1Click:Connect(function() Window:Toggle() end)
 	closeBtn.MouseButton1Click:Connect(ShowCloseConfirm)
-
-	-- shadow follows the window exactly (drag, resize, scale, visibility)
-	RunService.Heartbeat:Connect(function()
-		if not mainShadow.Parent then return end
-		local s = main.UIScale and main.UIScale.Scale or 1
-		mainShadow.Visible = main.Visible
-		if not main.Visible then return end
-		mainShadow.Position = UDim2.new(main.Position.X.Scale, main.Position.X.Offset,
-			main.Position.Y.Scale, main.Position.Y.Offset + 4)
-		mainShadow.Size = UDim2.new(0, (main.Size.X.Offset + 90) * s, 0, (main.Size.Y.Offset + 90) * s)
-	end)
 
 	MakeDraggable(topbar, main)
 
@@ -3322,12 +3352,14 @@ function Crystalized:CreateWindow(options)
 	})
 
 	-- avatar chip (hidden when Footer = false)
-	local chip = Create("Frame", {
+	local chip = Create("TextButton", {
 		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 10, 1, -10),
-		Size = UDim2.new(1, -20, 0, 46), BorderSizePixel = 0,
+		Size = UDim2.new(1, -20, 0, 46), BorderSizePixel = 0, Text = "",
+		AutoButtonColor = false,
 		Visible = options.Footer ~= false, Parent = sidebar,
 	}, { Create("UICorner", { CornerRadius = UDim.new(0, 7) }) })
 	Paint(chip, "BackgroundColor3", "Element")
+	Hoverify(chip, "Card")
 	local avatarFrame = Create("Frame", {
 		Position = UDim2.new(0, 8, 0.5, -14), Size = UDim2.new(0, 28, 0, 28),
 		BorderSizePixel = 0, Parent = chip,
@@ -3355,6 +3387,67 @@ function Crystalized:CreateWindow(options)
 		TextXAlignment = Enum.TextXAlignment.Left, Text = "@" .. LocalPlayer.Name, Parent = chip,
 	})
 	Paint(chipUser, "TextColor3", "SubText")
+
+	-- popover menu on avatar click (Job ID / Place ID / HWID / Join Code)
+	local chipMenu = Create("Frame", {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 10, 1, -60),
+		Size = UDim2.new(0, 170, 0, 134), BorderSizePixel = 0, ZIndex = 35,
+		Visible = false, Parent = sidebar,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 8) }),
+		Create("UIStroke", { Thickness = 1, Transparency = 0.5 }),
+		Create("UIPadding", {
+			PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
+			PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6),
+		}),
+		Create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	Paint(chipMenu, "BackgroundColor3", "Topbar")
+	local chipStroke = chipMenu:FindFirstChildWhichIsA("UIStroke")
+	if chipStroke then Paint(chipStroke, "Color", "Stroke") end
+
+	local function makeChipOption(order, label, getVal, copySuccessMsg)
+		local btn = Create("TextButton", {
+			Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1,
+			Text = "  " .. label, Font = Enum.Font.GothamSemibold, TextSize = 11,
+			TextXAlignment = Enum.TextXAlignment.Left, AutoButtonColor = false,
+			LayoutOrder = order, ZIndex = 36, Parent = chipMenu,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, 6) }) })
+		Paint(btn, "TextColor3", "Text")
+		Hoverify(btn, "Element")
+		btn.MouseButton1Click:Connect(function()
+			chipMenu.Visible = false
+			local val = getVal()
+			pcall(setclipboard, tostring(val))
+			Crystalized:Notify({ Title = "Copied", Content = copySuccessMsg or (label .. " copied!"), Duration = 2.5 })
+		end)
+	end
+
+	makeChipOption(1, "Copy Job ID", function() return game.JobId end, "JobId copied to clipboard")
+	makeChipOption(2, "Copy Place ID", function() return tostring(game.PlaceId) end, "PlaceId copied to clipboard")
+	makeChipOption(3, "Copy HWID", function()
+		local hw = (gethwid and gethwid()) or (rbx_gethwid and rbx_gethwid()) or (identifyexecutor and identifyexecutor())
+		return hw or "HWID-N/A"
+	end, "HWID copied to clipboard")
+	makeChipOption(4, "Copy Join Code", function()
+		return string.format('game:GetService("TeleportService"):TeleportToPlaceInstance(%d, "%s", game:GetService("Players").LocalPlayer)', game.PlaceId, game.JobId)
+	end, "Instant Join Code copied! Paste into executor to join")
+
+	chip.MouseButton1Click:Connect(function()
+		chipMenu.Visible = not chipMenu.Visible
+	end)
+
+	UserInputService.InputBegan:Connect(function(input)
+		if not chipMenu.Visible then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1
+		and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		local pos = input.Position
+		local ap, sz = chipMenu.AbsolutePosition, chipMenu.AbsoluteSize
+		local cp, cs = chip.AbsolutePosition, chip.AbsoluteSize
+		local inMenu = pos.X >= ap.X and pos.X <= ap.X + sz.X and pos.Y >= ap.Y and pos.Y <= ap.Y + sz.Y
+		local inChip = pos.X >= cp.X and pos.X <= cp.X + cs.X and pos.Y >= cp.Y and pos.Y <= cp.Y + cs.Y
+		if not inMenu and not inChip then chipMenu.Visible = false end
+	end)
 
 	-------------------- Pages area --------------------
 	-- (the bottom status strip was removed per request - the tagline lives up top,
@@ -3411,7 +3504,7 @@ function Crystalized:CreateWindow(options)
 
 	local fxLayer = Create("Frame", {
 		Name = "BackgroundFX", Size = UDim2.new(1, 0, 1, 0),
-		BackgroundTransparency = 1, ZIndex = 0, Parent = Gui,
+		BackgroundTransparency = 1, ZIndex = 0, ClipsDescendants = true, Parent = bgHolder,
 	})
 	local fxAlive = {}
 	local fxMode = "None"
@@ -3441,7 +3534,7 @@ function Crystalized:CreateWindow(options)
 		local dur = isSparkle and math.random(3, 6) or math.random(5, 9)
 		local drift = math.random(-40, 40) / 100
 		local targetY = isSparkle and -0.05 or 1.05
-		-- fade in -> drift across the screen -> fade out
+		-- fade in -> drift across the UI -> fade out
 		TweenService:Create(p, TweenInfo.new(0.5), { BackgroundTransparency = isSparkle and 0.25 or 0.15 }):Play()
 		TweenService:Create(p, TweenInfo.new(dur, Enum.EasingStyle.Linear),
 			{ Position = UDim2.new(math.clamp(p.Position.X.Scale + drift, 0, 1), 0, targetY, 0) }):Play()
@@ -3499,17 +3592,17 @@ function Crystalized:CreateWindow(options)
 		ScaleType = Enum.ScaleType.Fit, ZIndex = 15, Visible = false, Parent = dummy,
 	})
 	local vpfCam = Instance.new("Camera")
-	vpfCam.FieldOfView = 50
+	vpfCam.FieldOfView = 48
 	vpf.CurrentCamera = vpfCam
 	vpfCam.Parent = vpf
 
 	local rotAngle = 0
 	local charClone = nil
 	local function updateCam()
-		local dist = 5.2
-		local height = 0.2
+		local dist = 7.6
+		local height = -0.4
 		local rad = math.rad(rotAngle)
-		local eyePos = Vector3.new(math.sin(rad) * dist, height, math.cos(rad) * dist)
+		local eyePos = Vector3.new(math.sin(rad) * dist, height + 0.3, math.cos(rad) * dist)
 		vpfCam.CFrame = CFrame.new(eyePos, Vector3.new(0, height, 0))
 	end
 	updateCam()
@@ -3523,18 +3616,15 @@ function Crystalized:CreateWindow(options)
 				charClone = char:Clone()
 				char.Archivable = false
 				charClone.Parent = vpf
-				local hrp = charClone:FindFirstChild("HumanoidRootPart")
-				if hrp then
-					for _, part in ipairs(charClone:GetDescendants()) do
-						if part:IsA("BasePart") then
-							part.Anchored = true
-							part.CanCollide = false
-						end
+				for _, part in ipairs(charClone:GetDescendants()) do
+					if part:IsA("BasePart") then
+						part.Anchored = true
+						part.CanCollide = false
 					end
-					charClone:MoveTo(Vector3.new(0, -1.8, 0))
-					vpf.Visible = true
-					figure.Visible = false
 				end
+				charClone:MoveTo(Vector3.new(0, -2.8, 0))
+				vpf.Visible = true
+				figure.Visible = false
 			end)
 		end
 	end
@@ -3569,11 +3659,7 @@ function Crystalized:CreateWindow(options)
 	local function refreshAvatar()
 		task.spawn(function()
 			local ok, thumb = pcall(Players.GetUserThumbnailAsync, Players,
-				LocalPlayer.UserId, Enum.ThumbnailType.AvatarBust, Enum.ThumbnailSize.Size352x352)
-			if not ok then
-				ok, thumb = pcall(Players.GetUserThumbnailAsync, Players,
-					LocalPlayer.UserId, Enum.ThumbnailType.FullBody, Enum.ThumbnailSize.Size352x352)
-			end
+				LocalPlayer.UserId, Enum.ThumbnailType.FullBody, Enum.ThumbnailSize.Size352x352)
 			if ok then figure.Image = thumb end
 		end)
 	end
