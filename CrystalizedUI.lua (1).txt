@@ -1,0 +1,4289 @@
+--[[
+╔════════════════════════════════════════════════════════════╗
+║              CRYSTALIZED UI LIBRARY  v1.0.0               ║
+║              .gg/crystalized                              ║
+╠════════════════════════════════════════════════════════════╣
+║  A full-featured script hub UI library for Roblox.        ║
+║                                                            ║
+║  HOW TO LOAD (from your executor):                        ║
+║  local Crystalized = loadstring(game:HttpGet(             ║
+║      "https://raw.githubusercontent.com/YOU/REPO/main/CrystalizedUI.lua"
+║  ))()                                                      ║
+║                                                            ║
+║  Then check example.lua for a full tour of every feature. ║
+╚════════════════════════════════════════════════════════════╝
+]]
+
+--============================================================--
+-- SERVICES & SHORTCUTS
+--============================================================--
+local TweenService      = game:GetService("TweenService")
+local UserInputService  = game:GetService("UserInputService")
+local RunService        = game:GetService("RunService")
+local Players           = game:GetService("Players")
+local HttpService       = game:GetService("HttpService")
+local LocalPlayer       = Players.LocalPlayer
+
+-- touch-only devices (no physical keyboard) skip keybind chips entirely
+local HAS_KEYBOARD = UserInputService.KeyboardEnabled
+
+--============================================================--
+-- THE LIBRARY TABLE (everything public hangs off this)
+--============================================================--
+local Crystalized = {}
+Crystalized.Version   = "1.0.0"
+Crystalized.Flags     = {}            -- [flag] = current value of every flagged element
+Crystalized._flagMeta = {}            -- [flag] = {Type, Set(value)} used by the config system
+Crystalized._binds    = {}            -- every keybind, feeds the Keybind List panel
+Crystalized.Debug     = false         -- profiler toggle (per answer 24)
+Crystalized._profile  = {}            -- rolling {Src,Ms} samples when Debug is on
+
+-- print/show a tiny profiler summary: slowest + average callback times
+function Crystalized:DebugReport()
+	if #self._profile == 0 then
+		self:Notify({ Title = "Profiler", Content = "No samples yet — toggle Debug on and click around", Duration = 3 })
+		return
+	end
+	local sum, worst, wsrc = 0, 0, "?"
+	for _, s in ipairs(self._profile) do
+		sum = sum + s.Ms
+		if s.Ms > worst then worst, wsrc = s.Ms, s.Src end
+	end
+	local avg = sum / #self._profile
+	print(string.format("[Crystalized] Profiler: %d samples, avg %.2fms, worst %.1fms (%s)",
+		#self._profile, avg, worst, wsrc))
+	self:Notify({ Title = "Profiler", Type = worst > 16 and "warn" or "success",
+		Content = string.format("%d samples · avg %.1fms · worst %.1fms", #self._profile, avg, worst),
+		Duration = 4 })
+end
+Crystalized._paints   = {}            -- theme registry: {i=instance, p=property, r=role, a=alpha}
+Crystalized._fades    = {}            -- [instance] = {prop = originalTransparency}
+Crystalized._fadeSeq  = {}            -- [root] = counter, guards against overlapping fades
+Crystalized._silent   = false         -- true while configs load (suppresses toasts)
+
+--============================================================--
+-- THEMES
+-- Two full themes (Dark / Light) + a pack of accent presets.
+-- Every painted instance is registered in _paints so the whole
+-- UI can recolor LIVE when the user swaps theme/accent.
+--============================================================--
+local BaseThemes = {
+	Dark = {
+		Background = Color3.fromRGB(10, 10, 14),
+		Topbar     = Color3.fromRGB(14, 14, 20),
+		Sidebar    = Color3.fromRGB(13, 13, 18),
+		Card       = Color3.fromRGB(17, 17, 24),
+		Element    = Color3.fromRGB(23, 23, 33),
+		Stroke     = Color3.fromRGB(38, 38, 50),
+		Text       = Color3.fromRGB(240, 240, 246),
+		SubText    = Color3.fromRGB(148, 148, 165),
+		ToggleOff  = Color3.fromRGB(46, 46, 60),
+	},
+	Light = {
+		Background = Color3.fromRGB(238, 239, 244),
+		Topbar     = Color3.fromRGB(247, 247, 251),
+		Sidebar    = Color3.fromRGB(244, 244, 249),
+		Card       = Color3.fromRGB(255, 255, 255),
+		Element    = Color3.fromRGB(232, 233, 240),
+		Stroke     = Color3.fromRGB(212, 214, 226),
+		Text       = Color3.fromRGB(26, 27, 34),
+		SubText    = Color3.fromRGB(104, 106, 120),
+		ToggleOff  = Color3.fromRGB(206, 208, 222),
+	},
+	-- extra named themes (Settings → Theme dropdown)
+	Midnight = {
+		Background = Color3.fromRGB(7, 11, 20),
+		Topbar     = Color3.fromRGB(11, 18, 32),
+		Sidebar    = Color3.fromRGB(10, 16, 25),
+		Card       = Color3.fromRGB(15, 22, 38),
+		Element    = Color3.fromRGB(21, 32, 54),
+		Stroke     = Color3.fromRGB(34, 48, 74),
+		Text       = Color3.fromRGB(232, 237, 247),
+		SubText    = Color3.fromRGB(138, 151, 181),
+		ToggleOff  = Color3.fromRGB(34, 51, 84),
+	},
+	["Crimson Dusk"] = {
+		Background = Color3.fromRGB(19, 9, 12),
+		Topbar     = Color3.fromRGB(27, 13, 17),
+		Sidebar    = Color3.fromRGB(25, 12, 16),
+		Card       = Color3.fromRGB(34, 16, 23),
+		Element    = Color3.fromRGB(45, 22, 32),
+		Stroke     = Color3.fromRGB(74, 36, 48),
+		Text       = Color3.fromRGB(247, 232, 234),
+		SubText    = Color3.fromRGB(176, 138, 146),
+		ToggleOff  = Color3.fromRGB(61, 36, 48),
+	},
+	Forest = {
+		Background = Color3.fromRGB(10, 18, 13),
+		Topbar     = Color3.fromRGB(13, 26, 18),
+		Sidebar    = Color3.fromRGB(12, 23, 16),
+		Card       = Color3.fromRGB(17, 33, 25),
+		Element    = Color3.fromRGB(23, 49, 37),
+		Stroke     = Color3.fromRGB(36, 69, 52),
+		Text       = Color3.fromRGB(232, 245, 236),
+		SubText    = Color3.fromRGB(138, 166, 148),
+		ToggleOff  = Color3.fromRGB(36, 61, 48),
+	},
+	Aurora = {
+		Background = Color3.fromRGB(14, 10, 24),
+		Topbar     = Color3.fromRGB(22, 16, 36),
+		Sidebar    = Color3.fromRGB(19, 14, 31),
+		Card       = Color3.fromRGB(28, 20, 48),
+		Element    = Color3.fromRGB(36, 28, 64),
+		Stroke     = Color3.fromRGB(55, 43, 92),
+		Text       = Color3.fromRGB(240, 235, 251),
+		SubText    = Color3.fromRGB(158, 147, 196),
+		ToggleOff  = Color3.fromRGB(46, 38, 80),
+	},
+}
+
+-- "Tons of sick presets" -- used by the Settings swatch row + SetAccent()
+Crystalized.Accents = {
+	Crimson = Color3.fromRGB(238, 71, 90),
+	Violet  = Color3.fromRGB(139, 92, 246),
+	Azure   = Color3.fromRGB(56, 130, 246),
+	Emerald = Color3.fromRGB(16, 185, 129),
+	Amber   = Color3.fromRGB(245, 158, 11),
+	Rose    = Color3.fromRGB(244, 63, 94),
+	Ice     = Color3.fromRGB(56, 189, 248),
+	Lime    = Color3.fromRGB(132, 204, 22),
+	Gold    = Color3.fromRGB(255, 199, 64), -- auto-applied when a premium key redeems
+}
+
+-- Genuine icons (lucide vector set, zero emojis). Use CreateTab({ Icon = "swords" })
+-- or any element that takes an icon — a raw "rbxassetid://..." string works too.
+-- (more names can be added the same way; ids from the public lucide-roblox map)
+Crystalized.Icons = {
+	["home"]="rbxassetid://10723407389", ["sword"]="rbxassetid://10734975486",
+	["swords"]="rbxassetid://10734975692", ["crosshair"]="rbxassetid://10709818534",
+	["eye"]="rbxassetid://10723346959", ["eye-off"]="rbxassetid://10723346871",
+	["gem"]="rbxassetid://10723396000", ["settings"]="rbxassetid://10734950309",
+	["star"]="rbxassetid://10734966248", ["shield"]="rbxassetid://10734951847",
+	["crown"]="rbxassetid://10709818626", ["lock"]="rbxassetid://10723434711",
+	["message-circle"]="rbxassetid://10734888000", ["user"]="rbxassetid://10747373176",
+	["users"]="rbxassetid://10747373426", ["target"]="rbxassetid://10734977012",
+	["rocket"]="rbxassetid://10734934585", ["flame"]="rbxassetid://10723376114",
+	["bell"]="rbxassetid://10709775704", ["search"]="rbxassetid://10734943674",
+	["copy"]="rbxassetid://10709812159", ["check"]="rbxassetid://10709790644",
+	["x"]="rbxassetid://10747384394", ["minus"]="rbxassetid://10734896206",
+	["plus"]="rbxassetid://10734924532", ["save"]="rbxassetid://10734941499",
+	["download"]="rbxassetid://10723344270", ["play"]="rbxassetid://10734923549",
+	["rotate-cw"]="rbxassetid://10734940654", ["trash-2"]="rbxassetid://10747362241",
+	["palette"]="rbxassetid://10734910430", ["menu"]="rbxassetid://10734887784",
+	["list"]="rbxassetid://10723433811", ["sliders-horizontal"]="rbxassetid://10734963191",
+	["cloud"]="rbxassetid://10709806740", ["image"]="rbxassetid://10723415040",
+	["wand-2"]="rbxassetid://10747376349", ["wand"]="rbxassetid://10747376565",
+	["cog"]="rbxassetid://10709810948", ["ghost"]="rbxassetid://10723396107",
+	["skull"]="rbxassetid://10734962068", ["medal"]="rbxassetid://10734887072",
+	["gamepad-2"]="rbxassetid://10723395215", ["joystick"]="rbxassetid://10723416527",
+	["tag"]="rbxassetid://10734976528", ["info"]="rbxassetid://10723415903",
+	["alert-triangle"]="rbxassetid://10709753149", ["circle"]="rbxassetid://10709798174",
+	["chevron-right"]="rbxassetid://10709791437", ["arrow-right"]="rbxassetid://10709768347",
+	["clock"]="rbxassetid://10709805144", ["fingerprint"]="rbxassetid://10723375250",
+	["key"]="rbxassetid://10723416652", ["coins"]="rbxassetid://10709811110",
+	["layers"]="rbxassetid://10723424505", ["maximize"]="rbxassetid://10734886735",
+	["minimize"]="rbxassetid://10734895698", ["move"]="rbxassetid://10734900011",
+	["expand"]="rbxassetid://10723346553", ["shrink"]="rbxassetid://10734953073",
+	["compass"]="rbxassetid://10709811445", ["code"]="rbxassetid://10709810463",
+	["terminal"]="rbxassetid://10734982144", ["globe"]="rbxassetid://10723404337",
+	["link"]="rbxassetid://10723426722", ["external-link"]="rbxassetid://10723346684",
+	["snowflake"]="rbxassetid://10734964600", ["sun"]="rbxassetid://10734974297",
+	["moon"]="rbxassetid://10734897102", ["droplet"]="rbxassetid://10723344432",
+	["feather"]="rbxassetid://10723354671",
+}
+
+-- icon lookup: accepts a map name, an "rbxassetid://..." url, or nil
+local function ResolveIcon(s)
+	if type(s) ~= "string" then return nil end
+	if Crystalized.Icons[s] then return Crystalized.Icons[s] end
+	if s:match("^rbxassetid://%d+$") then return s end
+	return nil
+end
+
+-- Default panel transparencies per theme (this is what gives the
+-- frosted-glass feel). Extra named themes reuse the Dark values.
+local RoleAlpha = setmetatable({
+	-- defaults land more opaque (per request: base glass felt too transparent)
+	Dark  = { Background = 0.05, Sidebar = 0.09, Topbar = 0.09, Card = 0.03, Element = 0.02, ToggleOff = 0.12 },
+	Light = { Background = 0.03, Sidebar = 0.04, Topbar = 0.04, Card = 0.015, Element = 0.012, ToggleOff = 0.05 },
+}, { __index = function(t, k) return rawget(t, "Dark") end })
+
+-- Friendly named colors (info boxes, tags, Danger, per-element Color = "...")
+local DANGER_COLOR = Color3.fromRGB(255, 71, 87)
+local NAMED_COLORS = {
+	Red = DANGER_COLOR, Green = Color3.fromRGB(107, 229, 133),
+	Blue = Color3.fromRGB(79, 163, 255), Gold = Color3.fromRGB(255, 199, 64),
+	White = Color3.new(1, 1, 1), Pink = Color3.fromRGB(255, 122, 182),
+	Orange = Color3.fromRGB(255, 143, 79),
+}
+
+-- Accepts a Color3, an accent preset name ("Azure"), a named color ("Green"),
+-- or a hex string ("#ff2d55") -> Color3 (nil if it can't be resolved)
+local function ResolveColor(c)
+	if typeof(c) == "Color3" then return c end
+	if type(c) == "string" then
+		if Crystalized.Accents[c] then return Crystalized.Accents[c] end
+		if NAMED_COLORS[c] then return NAMED_COLORS[c] end
+		local hex = string.gsub(c, "^#", "")
+		if #hex == 6 and hex:match("^[%x]+$") then
+			return Color3.fromRGB(
+				tonumber(hex:sub(1, 2), 16), tonumber(hex:sub(3, 4), 16), tonumber(hex:sub(5, 6), 16))
+		end
+	end
+	return nil
+end
+
+-- Live theme table (mutated in place so all references stay valid)
+local Theme = { Name = "Dark", Accent = Crystalized.Accents.Crimson }
+Crystalized.Theme = Theme
+
+-- Lightens (or darkens with negative amt) a color -- used for hover states
+local function Lighten(color, amt)
+	return Color3.new(
+		color.R + (amt > 0 and (1 - color.R) * amt or color.R * amt),
+		color.G + (amt > 0 and (1 - color.G) * amt or color.G * amt),
+		color.B + (amt > 0 and (1 - color.B) * amt or color.B * amt)
+	)
+end
+
+-- Rebuilds the live Theme table from base theme + accent
+local function RebuildTheme()
+	local base = BaseThemes[Theme.Name] or BaseThemes.Dark
+	for key, value in pairs(base) do Theme[key] = value end
+	Theme.AccentSoft = Lighten(Theme.Accent, 0.18)
+	Theme.Hover      = Lighten(Theme.Element, Theme.Name ~= "Light" and 0.12 or -0.08)
+	Theme.Gold       = Color3.fromRGB(255, 199, 64)   -- premium accents, same in both themes
+end
+RebuildTheme()
+
+--============================================================--
+-- GENERIC HELPERS
+--============================================================--
+
+-- Quick Instance factory: Create("Frame", {Size=...}, {child1, child2})
+-- Font swap system: every text element registers here, SetFont() restyles all
+local FONT_FAMILIES = {
+	["Gotham"]     = { Face = Enum.Font.Gotham,     Bold = Enum.Font.GothamSemibold },
+	["Arial"]      = { Face = Enum.Font.Arial,      Bold = Enum.Font.ArialBold },
+	["Code"]       = { Face = Enum.Font.Code,       Bold = Enum.Font.Code },
+	["FredokaOne"] = { Face = Enum.Font.FredokaOne, Bold = Enum.Font.FredokaOne }, -- chunky, Minecraft-ish
+	["Bangers"]    = { Face = Enum.Font.Bangers,    Bold = Enum.Font.Bangers },
+}
+local textRegistry = {}  -- { { i=inst, b=isBold }, ... }
+local activeFont = nil   -- becomes a FONT_FAMILIES entry after SetFont()
+
+local function fontWeightOf(inst)
+	local name = tostring(inst.Font)
+	return (name:find("Bold") ~= nil) or (name:find("Black") ~= nil) or (name:find("Semi") ~= nil)
+end
+
+local function registerText(inst)
+	local entry = { i = inst, b = fontWeightOf(inst) }
+	table.insert(textRegistry, entry)
+	if activeFont then
+		entry.i.Font = (entry.b and activeFont.Bold) or activeFont.Face
+	end
+end
+
+function Crystalized:SetFont(name)
+	local fam = FONT_FAMILIES[tostring(name)] or FONT_FAMILIES.Gotham
+	activeFont = fam
+	for _, t in ipairs(textRegistry) do
+		if t.i and t.i.Parent ~= nil then
+			t.i.Font = (t.b and fam.Bold) or fam.Face
+		end
+	end
+end
+
+local function Create(className, props, children)
+	local inst = Instance.new(className)
+	for key, value in pairs(props or {}) do
+		if key ~= "Parent" then
+			pcall(function() inst[key] = value end)
+		end
+	end
+	for _, child in ipairs(children or {}) do
+		child.Parent = inst
+	end
+	if className == "TextLabel" or className == "TextButton" or className == "TextBox" then
+		registerText(inst)
+	end
+	if props and props.Parent then inst.Parent = props.Parent end
+	return inst
+end
+
+-- The house motion style: crisp Quint at slightly-faster-than-spec speeds.
+-- style = "Snappy" (same Quint, tighter), style = "Pop" reserved for the
+-- signature punchy moments (window open, pill pop, premium card).
+local function Tween(obj, duration, props, style)
+	local easing = (style == "Pop")
+		and TweenInfo.new(duration, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
+		or  TweenInfo.new(duration * 0.75, Enum.EasingStyle.Quint, Enum.EasingDirection.Out)
+	local tw = TweenService:Create(obj, easing, props)
+	tw:Play()
+	return tw
+end
+
+-- Applies a theme color to a registered entry. Called by Paint() at
+-- creation and by ApplyTheme() on every live recolor.
+local function Recolor(entry, instant)
+	local color = entry.c or Theme[entry.r]  -- entry.c = pinned element color (Danger/Color overrides)
+	if not color then return end
+	local alpha = entry.a
+	if alpha == nil then
+		alpha = (RoleAlpha[Theme.Name] and RoleAlpha[Theme.Name][entry.r]) or 0
+	end
+	-- global UI Transparency slider stacks extra see-through on every panel
+	if entry.p == "BackgroundColor3" then
+		alpha = math.min(0.97, alpha + (Crystalized._extraBG or 0))
+	end
+	pcall(function()
+		if instant then
+			entry.i[entry.p] = color
+			if entry.p == "BackgroundColor3" then entry.i.BackgroundTransparency = alpha end
+			if entry.p == "ImageColor3" then entry.i.ImageTransparency = alpha end
+		else
+			local props = { [entry.p] = color }
+			if entry.p == "BackgroundColor3" then props.BackgroundTransparency = alpha end
+			if entry.p == "ImageColor3" then props.ImageTransparency = alpha end
+			TweenService:Create(entry.i, TweenInfo.new(0.25, Enum.EasingStyle.Quint), props):Play()
+		end
+	end)
+end
+
+-- Paints an instance property with a theme color AND remembers it so
+-- ApplyTheme() can live-recolor everything later. Returns the entry so
+-- elements can mutate entry.r / entry.a and call Recolor() themselves.
+local function Paint(inst, prop, role, alpha)
+	local entry = { i = inst, p = prop, r = role, a = alpha }
+	Recolor(entry, true)
+	table.insert(Crystalized._paints, entry)
+	return entry
+end
+
+-- Soft drop-shadow follower for floating cards/popups (per answer 25).
+-- Tracks the target's size/position every frame, cleans itself up.
+local function AddShadow(target, pad, transparency)
+	pad = pad or 30
+	if not target or not target.Parent then return end
+	local shadow = Create("ImageLabel", {
+		AnchorPoint = target.AnchorPoint,
+		Position = UDim2.new(target.Position.X.Scale, target.Position.X.Offset,
+			target.Position.Y.Scale, target.Position.Y.Offset + 3),
+		Size = UDim2.new(0, target.AbsoluteSize.X + pad * 2, 0, target.AbsoluteSize.Y + pad * 2),
+		BackgroundTransparency = 1, ZIndex = math.max(0, target.ZIndex - 1),
+		Image = "rbxassetid://5028857084", ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = Rect.new(24, 24, 276, 276), ImageColor3 = Color3.new(0, 0, 0),
+		ImageTransparency = transparency or 0.6, Parent = target.Parent,
+	})
+	local conn
+	conn = RunService.Heartbeat:Connect(function()
+		if not shadow.Parent or not target.Parent then
+			pcall(function() conn:Disconnect() end)
+			if shadow.Parent then shadow:Destroy() end
+			return
+		end
+		shadow.Visible = target.Visible
+		shadow.Position = UDim2.new(target.Position.X.Scale, target.Position.X.Offset,
+			target.Position.Y.Scale, target.Position.Y.Offset + 3)
+		shadow.Size = UDim2.new(0, target.AbsoluteSize.X + pad * 2, 0, target.AbsoluteSize.Y + pad * 2)
+	end)
+	return shadow
+end
+
+-- Extra see-through for every panel (0..60 percent). Stacks on RoleAlpha;
+-- Recolor() reads Crystalized._extraBG, this just applies it live.
+function Crystalized:SetTransparency(pct)
+	self._extraBG = math.clamp((tonumber(pct) or 0) / 100, 0, 0.6)
+	for _, entry in ipairs(self._paints) do
+		if entry.i and entry.i.Parent ~= nil and entry.p == "BackgroundColor3" then
+			Recolor(entry, true)
+		end
+	end
+end
+
+-- Background artwork: accepts "rbxassetid://123", "123" or an asset url.
+-- Empty string removes it. The holder is created with the window (BGHolder).
+function Crystalized:SetBackgroundImage(id)
+	local digits = tostring(id or ""):gsub("[^%d]", "")
+	local holder = self._bgHolder
+	if not holder then self._pendingBG = digits ~= "" and digits or nil return end
+	if digits == "" then
+		local old = holder:FindFirstChildWhichIsA("ImageLabel")
+		if old then old:Destroy() end
+		return
+	end
+	local img = holder:FindFirstChildWhichIsA("ImageLabel")
+	if not img then
+		img = Create("ImageLabel", {
+			Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+			ScaleType = Enum.ScaleType.Crop, ImageTransparency = 0.85, ZIndex = 1,
+			Parent = holder,
+		})
+	end
+	img.Image = "rbxassetid://" .. digits
+end
+
+Crystalized._themeHooks = {}
+-- Recolors the ENTIRE ui (theme swap / accent swap)
+local function ApplyTheme()
+	for _, entry in ipairs(Crystalized._paints) do
+		if entry.i and entry.i.Parent ~= nil then
+			Recolor(entry, false)
+		end
+	end
+	-- Ask every open window to refresh its custom states (tabs, switches)
+	for _, fn in ipairs(Crystalized._themeHooks) do
+		task.spawn(fn)
+	end
+end
+
+-- Rounds to n decimals: Round(3.14159, 2) -> 3.14
+local function Round(num, decimals)
+	local mult = 10 ^ (decimals or 0)
+	return math.floor(num * mult + 0.5) / mult
+end
+
+-- Fires a user callback SAFELY (errors never break the ui)
+local function Fire(fn, ...)
+	if type(fn) ~= "function" then return end
+	local args = { ... }
+	local label = debug and debug.getinfo(fn, "S") and debug.getinfo(fn, "S").short_src or "?"
+	task.spawn(function()
+		local t0 = os.clock()
+		local ok, err = pcall(fn, table.unpack(args))
+		local ms = (os.clock() - t0) * 1000
+		-- lightweight callback profiler (per answer 24): enable with
+		-- Crystalized.Debug = true → slow callbacks get flagged in the console,
+		-- and Crystalized:DebugReport() prints averages.
+		if Crystalized.Debug then
+			local p = Crystalized._profile
+			p[#p + 1] = { Src = label, Ms = ms }
+			if #p > 500 then table.remove(p, 1) end
+			if ms > 16 then
+				warn(string.format("[Crystalized] Slow callback: %s took %.1fms", label, ms))
+			end
+		end
+		if not ok then warn("[Crystalized] Callback error: " .. tostring(err)) end
+	end)
+end
+
+-- Makes `frame` draggable by dragging `handle` (mouse + touch)
+local function MakeDraggable(handle, frame)
+	local dragging, dragInput, dragStart, startPos
+	handle.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragging  = true
+			dragStart = input.Position
+			startPos  = frame.Position
+			input.Changed:Connect(function()
+				if input.UserInputState == Enum.UserInputState.End then
+					dragging = false
+					local cam = workspace.CurrentCamera
+					if cam and frame:GetAttribute("IsMainWindow") then
+						local vp = cam.ViewportSize
+						local abs, size = frame.AbsolutePosition, frame.AbsoluteSize
+						-- swipe-to-minimize: fling/slide the UI off screen and it fades away
+						-- in that direction and minimizes to the pill (Android tab style)
+						local offLeft   = (abs.X + size.X * 0.45 < 0)
+						local offRight  = (abs.X + size.X * 0.55 > vp.X)
+						local offTop    = (abs.Y + size.Y * 0.45 < 0)
+						local offBottom = (abs.Y + size.Y * 0.55 > vp.Y)
+
+						if offLeft or offRight or offTop or offBottom then
+							local targetX = abs.X + (offLeft and -260 or offRight and 260 or 0)
+							local targetY = abs.Y + (offTop and -200 or offBottom and 200 or 0)
+							local flyTween = TweenService:Create(frame, TweenInfo.new(0.24, Enum.EasingStyle.Quad, Enum.EasingDirection.In), {
+								Position = UDim2.new(0, targetX + size.X * frame.AnchorPoint.X, 0, targetY + size.Y * frame.AnchorPoint.Y),
+							})
+							flyTween:Play()
+							Fade(frame, true, 0.22)
+							task.delay(0.25, function()
+								frame.Position = UDim2.new(0.5, 0, 0.5, 0)
+								if Crystalized._currentWindow and Crystalized._currentWindow.SetVisible then
+									Crystalized._currentWindow:SetVisible(false)
+								end
+							end)
+							return
+						end
+
+						-- snap-to-edge docking (per answer 21): near an edge and releasing
+						-- glides the window perfectly flush to it
+						local nx, ny = abs.X, abs.Y
+						local snapped = false
+						if abs.X < 24 then nx = 12 ; snapped = true
+						elseif abs.X + size.X > vp.X - 24 then nx = vp.X - size.X - 12 ; snapped = true end
+						if abs.Y < 24 then ny = 12 ; snapped = true
+						elseif abs.Y + size.Y > vp.Y - 24 then ny = vp.Y - size.Y - 12 ; snapped = true end
+						if snapped then
+							TweenService:Create(frame, TweenInfo.new(0.22, Enum.EasingStyle.Quint, Enum.EasingDirection.Out), {
+								Position = UDim2.new(0, nx + size.X * frame.AnchorPoint.X, 0, ny + size.Y * frame.AnchorPoint.Y),
+							}):Play()
+						end
+					end
+				end
+			end)
+		end
+	end)
+	handle.InputChanged:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragInput = input
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if input == dragInput and dragging then
+			local delta = input.Position - dragStart
+			frame.Position = UDim2.new(
+				startPos.X.Scale, startPos.X.Offset + delta.X,
+				startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+		end
+	end)
+end
+
+-- Mouse hover effect that always reads the CURRENT theme
+local function Hoverify(inst, normalRole)
+	-- hover depth: tiny tint raise + faint accent outline (the "pro tool" feel)
+	local stroke = Create("UIStroke", {
+		Thickness = 1, Transparency = 1, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		Parent = inst,
+	})
+	inst.MouseEnter:Connect(function()
+		stroke.Color = Theme.Accent
+		TweenService:Create(inst, TweenInfo.new(0.12, Enum.EasingStyle.Quint), { BackgroundColor3 = Theme.Hover }):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.12, Enum.EasingStyle.Quint), { Transparency = 0.55 }):Play()
+	end)
+	inst.MouseLeave:Connect(function()
+		TweenService:Create(inst, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { BackgroundColor3 = Theme[normalRole] }):Play()
+		TweenService:Create(stroke, TweenInfo.new(0.18, Enum.EasingStyle.Quint), { Transparency = 1 }):Play()
+	end)
+end
+
+--============================================================--
+-- FADE SYSTEM (windows fade out instead of snapping shut)
+-- Remembers every instance's original transparency once, so we
+-- can always restore cosmetics exactly.
+--============================================================--
+local FadeProps = {
+	Frame          = { "BackgroundTransparency" },
+	ScrollingFrame = { "BackgroundTransparency", "ScrollBarImageTransparency" },
+	TextLabel      = { "BackgroundTransparency", "TextTransparency" },
+	TextButton     = { "BackgroundTransparency", "TextTransparency" },
+	TextBox        = { "BackgroundTransparency", "TextTransparency" },
+	ImageLabel     = { "BackgroundTransparency", "ImageTransparency" },
+	ImageButton    = { "BackgroundTransparency", "ImageTransparency" },
+	UIStroke       = { "Transparency" },
+}
+
+local function Fade(root, fadeOut, duration)
+	-- bump a sequence counter so a stale "hide" never kills a re-shown ui
+	Crystalized._fadeSeq[root] = (Crystalized._fadeSeq[root] or 0) + 1
+	local mySeq = Crystalized._fadeSeq[root]
+	local instances = { root }
+	for _, d in ipairs(root:GetDescendants()) do table.insert(instances, d) end
+	for _, inst in ipairs(instances) do
+		local props = FadeProps[inst.ClassName]
+		if props then
+			if not Crystalized._fades[inst] then
+				Crystalized._fades[inst] = {}
+				for _, p in ipairs(props) do
+					pcall(function() Crystalized._fades[inst][p] = inst[p] end)
+				end
+			end
+			for _, p in ipairs(props) do
+				local target = fadeOut and 1 or (Crystalized._fades[inst][p] or 0)
+				TweenService:Create(inst, TweenInfo.new(duration, Enum.EasingStyle.Quint), { [p] = target }):Play()
+			end
+		end
+	end
+	if fadeOut then
+		task.delay(duration + 0.05, function()
+			if Crystalized._fadeSeq[root] == mySeq then root.Visible = false end
+		end)
+	end
+end
+
+--============================================================--
+-- SAFE GUI PARENT (executor-proof fallback chain)
+--============================================================--
+local function GetSafeParent()
+	local ok, result
+	if type(gethui) == "function" then
+		ok, result = pcall(gethui)
+		if ok and result then return result end
+	end
+	local coreGui = game:GetService("CoreGui")
+	ok = pcall(function() local _ = coreGui.Name end)
+	if ok then return coreGui end
+	return LocalPlayer:WaitForChild("PlayerGui")
+end
+
+--============================================================--
+-- ROOT SCREENGUI + GLOBAL OVERLAYS (watermark, pill, notifs,
+-- tooltips, keybind list). Created once at library load.
+--============================================================--
+local Gui = Create("ScreenGui", {
+	Name = "CrystalizedUI",
+	ResetOnSpawn = false,
+	IgnoreGuiInset = true,
+	DisplayOrder = 999,
+	ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+})
+if type(syn) == "table" and type(syn.protect_gui) == "function" then
+	pcall(syn.protect_gui, Gui)
+end
+Gui.Parent = GetSafeParent()
+
+--============================================================--
+-- TOOLTIP (hover any element with a Description)
+--============================================================--
+local Tooltip = Create("Frame", {
+	Name = "Tooltip", Visible = false, AutomaticSize = Enum.AutomaticSize.XY,
+	BorderSizePixel = 0, ZIndex = 50, Parent = Gui,
+}, {
+	Create("UICorner", { CornerRadius = UDim.new(0, 6) }),
+	Create("UIPadding", {
+		PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
+		PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8),
+	}),
+})
+local TooltipLabel = Create("TextLabel", {
+	Name = "Text", BackgroundTransparency = 1, AutomaticSize = Enum.AutomaticSize.XY,
+	Font = Enum.Font.GothamMedium, TextSize = 11, ZIndex = 51, Parent = Tooltip,
+})
+Paint(Tooltip, "BackgroundColor3", "Topbar", 0.02)
+Paint(TooltipLabel, "TextColor3", "Text")
+local tooltipStroke = Create("UIStroke", {
+	Thickness = 1, Transparency = 0.5, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = Tooltip,
+})
+Paint(tooltipStroke, "Color", "Stroke")
+
+local tooltipToken = 0
+local function AttachTooltip(row, text)
+	if not text or text == "" then return end
+	-- optional affordance: a dim "?" affordance at the end of the row's name
+	-- so players can see at a glance that a description exists
+	if row:GetAttribute("IsRow") and not row:GetAttribute("HelpDot") then
+		row:SetAttribute("HelpDot", true)
+		for _, ch in ipairs(row:GetChildren()) do
+			if ch:IsA("TextLabel") and ch.BackgroundTransparency == 1 and ch.TextSize >= 12 then
+				ch.RichText = true
+				ch.Text = ch.Text .. '  <font color="rgb(130,130,145)">?</font>'
+				break
+			end
+		end
+	end
+	row.MouseEnter:Connect(function()
+		tooltipToken = tooltipToken + 1
+		local my = tooltipToken
+		task.delay(0.35, function()
+			if my ~= tooltipToken then return end
+			TooltipLabel.Text = text
+			Tooltip.Visible = true
+			Tooltip.BackgroundTransparency = 1
+			TooltipLabel.TextTransparency = 1
+			Tween(Tooltip, 0.2, { BackgroundTransparency = 0.02 }, "Snappy")
+			Tween(TooltipLabel, 0.2, { TextTransparency = 0 }, "Snappy")
+		end)
+	end)
+	row.MouseLeave:Connect(function()
+		tooltipToken = tooltipToken + 1
+		Tooltip.Visible = false
+	end)
+end
+
+RunService.RenderStepped:Connect(function()
+	if Tooltip.Visible then
+		local m = UserInputService:GetMouseLocation()
+		Tooltip.Position = UDim2.fromOffset(m.X + 16, m.Y + 18)
+	end
+end)
+
+--============================================================--
+-- NOTIFICATIONS (bottom-right stack)
+--============================================================--
+local NotifHolder = Create("Frame", {
+	Name = "Notifications", AnchorPoint = Vector2.new(1, 1), ZIndex = 5,
+	Position = UDim2.new(1, -14, 1, -14), Size = UDim2.new(0, 290, 1, -28),
+	BackgroundTransparency = 1, Parent = Gui,
+}, {
+	Create("UIListLayout", {
+		Padding = UDim.new(0, 8), SortOrder = Enum.SortOrder.LayoutOrder,
+		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+	}),
+})
+
+-- notification stack cap: at most 5 toasts on screen, the rest wait in a queue
+local NOTIF_CAP = 5
+local notifActive, notifQueue = 0, {}
+
+local function NotifyNow(opts)
+	opts = opts or {}
+	local duration = opts.Duration or 4
+	-- wrapper animates the slide-in without fighting the UIListLayout
+	local wrapper = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1, Parent = NotifHolder,
+	})
+	-- soft shadow chip behind every toast (per answer 25)
+	local toastShadow = Create("Frame", {
+		Size = UDim2.new(1, -6, 1, -6), Position = UDim2.new(0, 3, 0, 5),
+		BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.72,
+		BorderSizePixel = 0, ZIndex = math.max(0, (NotifHolder.ZIndex or 1) - 1), Parent = wrapper,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 8) }) })
+	local card = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		Position = UDim2.new(1, 40, 0, 0), ClipsDescendants = true,
+		BorderSizePixel = 0, Parent = wrapper,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 8) }),
+		Create("UIPadding", {
+			PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
+			PaddingLeft = UDim.new(0, 16), PaddingRight = UDim.new(0, 12),
+		}),
+		Create("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	Paint(card, "BackgroundColor3", "Topbar", 0.03)
+	local stroke = Create("UIStroke", { Thickness = 1, Transparency = 0.4, Parent = card })
+	Paint(stroke, "Color", "Stroke")
+	-- typed toasts: Type = "success"|"info"|"warn"|"error" (or Color = ...) tints
+	-- the spine + bottom progress bar + a small lucide glyph. Default = your accent.
+	local typeInfo = {
+		success = { c = Color3.fromRGB(107, 229, 133) },
+		info    = { c = Color3.fromRGB(79, 163, 255) },
+		warn    = { c = Color3.fromRGB(255, 199, 64) },
+		error   = { c = Color3.fromRGB(255, 71, 87) },
+	}
+	local tinfo = opts.Type and typeInfo[string.lower(tostring(opts.Type))]
+	if not tinfo then
+		local custom = ResolveColor(opts.Color)
+		tinfo = custom and { c = custom } or nil
+	end
+	-- accent bar on the left
+	local bar = Create("Frame", {
+		Size = UDim2.new(0, 3, 1, -14), Position = UDim2.new(0, 0, 0, 7),
+		BorderSizePixel = 0, Parent = card,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	if tinfo then bar.BackgroundColor3 = tinfo.c
+	else Paint(bar, "BackgroundColor3", "Accent") end
+	-- seconds-left progress bar along the bottom of the toast
+	local ptrack = Create("Frame", {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 10, 1, -4),
+		Size = UDim2.new(1, -20, 0, 3), BackgroundTransparency = 0.7,
+		BorderSizePixel = 0, Parent = wrapper, ZIndex = 7,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	Paint(ptrack, "BackgroundColor3", "Accent")
+	local pfill = Create("Frame", {
+		Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 0,
+		BorderSizePixel = 0, Parent = ptrack, ZIndex = 8,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	if tinfo then
+		ptrack.BackgroundColor3 = tinfo.c
+		pfill.BackgroundColor3 = tinfo.c
+	else
+		Paint(pfill, "BackgroundColor3", "Accent")
+	end
+	local title = Create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 15), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamSemibold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
+		Text = tostring(opts.Title or "Notification"), LayoutOrder = 1, Parent = card,
+	})
+	if tinfo then title.TextColor3 = tinfo.c
+	else Paint(title, "TextColor3", "Text") end
+	if opts.Content and opts.Content ~= "" then
+		local body = Create("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 12,
+			TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
+			Text = tostring(opts.Content), LayoutOrder = 2, Parent = card,
+		})
+		Paint(body, "TextColor3", "SubText")
+	end
+	-- slide + grow in, bouncy
+	Tween(card, 0.5, { Position = UDim2.new(0, 0, 0, 0) })
+	-- progress bar drains over the toast's lifetime
+	TweenService:Create(pfill, TweenInfo.new(duration, Enum.EasingStyle.Linear), {
+		Size = UDim2.new(0, 0, 1, 0),
+	}):Play()
+	task.delay(duration, function()
+		local out = Tween(card, 0.3, { Position = UDim2.new(1, 40, 0, 0) }, "Snappy")
+		out.Completed:Wait()
+		wrapper:Destroy()
+		notifActive = notifActive - 1
+		if #notifQueue > 0 then
+			local nextUp = table.remove(notifQueue, 1)
+			Crystalized:Notify(nextUp)
+		end
+	end)
+end
+
+-- Crystalized:Notify({ Title, Content, Type, Duration })
+function Crystalized:Notify(opts)
+	opts = opts or {}
+	if notifActive >= NOTIF_CAP then -- stack is full → wait your turn
+		table.insert(notifQueue, opts)
+		return
+	end
+	notifActive = notifActive + 1
+	NotifyNow(opts)
+end
+
+--============================================================--
+-- CLOSE CONFIRMATION ("u sure u wanna close the UI?" popup)
+--============================================================--
+local reopenSuppressUntil = 0
+
+local function ShowCloseConfirm()
+	local dim = Create("TextButton", {
+		Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 90, Parent = Gui,
+	})
+	TweenService:Create(dim, TweenInfo.new(0.25, Enum.EasingStyle.Quint), { BackgroundTransparency = 0.45 }):Play()
+	local card = Create("TextButton", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 300, 0, 146), Text = "", AutoButtonColor = false,
+		BorderSizePixel = 0, ZIndex = 91, Parent = dim,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 10) }),
+		Create("UIScale", { Scale = 0.8 }),
+	})
+	Paint(card, "BackgroundColor3", "Topbar", 0.02)
+	local cstroke = Create("UIStroke", { Thickness = 1, Transparency = 0.35, Parent = card })
+	Paint(cstroke, "Color", "Accent")
+	local title = Create("TextLabel", {
+		Position = UDim2.new(0, 0, 0, 14), Size = UDim2.new(1, 0, 0, 20),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 15,
+		Text = "!  Hold up!", ZIndex = 92, Parent = card,
+	})
+	Paint(title, "TextColor3", "Text")
+	local body = Create("TextLabel", {
+		Position = UDim2.new(0, 16, 0, 40), Size = UDim2.new(1, -32, 0, 36),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 12,
+		TextWrapped = true,
+		Text = "U sure u wanna close the UI? You'll have to re-execute the script to bring it back.",
+		ZIndex = 92, Parent = card,
+	})
+	Paint(body, "TextColor3", "SubText")
+	local cancelBtn = Create("TextButton", {
+		Position = UDim2.new(0, 16, 1, -44), Size = UDim2.new(0.5, -22, 0, 32),
+		Text = "Nah, go back", Font = Enum.Font.GothamSemibold, TextSize = 12.5,
+		AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 92, Parent = card,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 7) }) })
+	Paint(cancelBtn, "BackgroundColor3", "Element")
+	Paint(cancelBtn, "TextColor3", "Text")
+	local yesBtn = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -16, 1, -44),
+		Size = UDim2.new(0.5, -22, 0, 32),
+		Text = "Yes, close it", Font = Enum.Font.GothamSemibold, TextSize = 12.5,
+		TextColor3 = Color3.new(1, 1, 1), AutoButtonColor = false,
+		BorderSizePixel = 0, ZIndex = 92, Parent = card,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 7) }) })
+	Paint(yesBtn, "BackgroundColor3", "Accent")
+
+	local function dismiss()
+		TweenService:Create(dim, TweenInfo.new(0.2, Enum.EasingStyle.Quint), { BackgroundTransparency = 1 }):Play()
+		Fade(card, true, 0.15)
+		task.delay(0.22, function() dim:Destroy() end)
+	end
+	cancelBtn.MouseButton1Click:Connect(dismiss)
+	dim.MouseButton1Click:Connect(dismiss)   -- clicking outside the card cancels
+	yesBtn.MouseButton1Click:Connect(function()
+		TweenService:Create(dim, TweenInfo.new(0.15), { BackgroundTransparency = 1 }):Play()
+		task.wait(0.15)
+		Crystalized:Unload()   -- late-bound; method is assigned further down
+	end)
+	Tween(card.UIScale, 0.45, { Scale = 1 })
+end
+
+--============================================================--
+-- WATERMARK (top-right: name • fps • ping -- always visible)
+--============================================================--
+local Watermark = Create("Frame", {
+	Name = "Watermark", AnchorPoint = Vector2.new(1, 0), AutomaticSize = Enum.AutomaticSize.X, ZIndex = 5,
+	Position = UDim2.new(1, -12, 0, 12), Size = UDim2.new(0, 0, 0, 26),
+	BorderSizePixel = 0, Parent = Gui,
+}, {
+	Create("UICorner", { CornerRadius = UDim.new(0, 8) }),
+	Create("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }),
+	Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8),
+		VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder,
+	}),
+})
+Paint(Watermark, "BackgroundColor3", "Topbar", 0.08)
+local wmStroke = Create("UIStroke", { Thickness = 1, Transparency = 0.5, Parent = Watermark })
+Paint(wmStroke, "Color", "Stroke")
+local wmDot = Create("Frame", {
+	Size = UDim2.new(0, 7, 0, 7), BorderSizePixel = 0, LayoutOrder = 1, Parent = Watermark,
+}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+Paint(wmDot, "BackgroundColor3", "Accent")
+local wmName = Create("TextLabel", {
+	AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0), BackgroundTransparency = 1,
+	Font = Enum.Font.GothamSemibold, TextSize = 12, Text = "Crystalized", LayoutOrder = 2, Parent = Watermark,
+})
+Paint(wmName, "TextColor3", "Text")
+local wmStats = Create("TextLabel", {
+	AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0), BackgroundTransparency = 1,
+	Font = Enum.Font.GothamMedium, TextSize = 11, Text = "60 FPS  •  0 ms", LayoutOrder = 3, Parent = Watermark,
+})
+Paint(wmStats, "TextColor3", "SubText")
+MakeDraggable(Watermark, Watermark) -- drag the watermark anywhere (per request)
+--============================================================--
+local BindPanel = Create("Frame", {
+	Name = "KeybindList", Position = UDim2.new(0, 12, 0, 12), ZIndex = 5,
+	Size = UDim2.new(0, 190, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+	BorderSizePixel = 0, Visible = false, Parent = Gui,
+}, {
+	Create("UICorner", { CornerRadius = UDim.new(0, 8) }),
+	Create("UIPadding", {
+		PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
+		PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
+	}),
+	Create("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
+})
+Paint(BindPanel, "BackgroundColor3", "Topbar", 0.06)
+local bpStroke = Create("UIStroke", { Thickness = 1, Transparency = 0.5, Parent = BindPanel })
+Paint(bpStroke, "Color", "Stroke")
+local bpTitle = Create("TextLabel", {
+	Size = UDim2.new(1, 0, 0, 15), BackgroundTransparency = 1,
+	Font = Enum.Font.GothamSemibold, TextSize = 12,
+	TextXAlignment = Enum.TextXAlignment.Left, Text = "Keybinds",
+	LayoutOrder = 0, Parent = BindPanel,
+})
+Paint(bpTitle, "TextColor3", "Text")
+
+-- Rebuilds the rows inside the keybind panel
+local function RefreshBindPanel()
+	for _, child in ipairs(BindPanel:GetChildren()) do
+		if child:GetAttribute("IsBindRow") then child:Destroy() end
+	end
+	for order, bind in ipairs(Crystalized._binds) do
+		local row = Create("Frame", {
+			Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1,
+			LayoutOrder = order, Parent = BindPanel,
+		})
+		row:SetAttribute("IsBindRow", true)
+		local dot = Create("Frame", {
+			Size = UDim2.new(0, 6, 0, 6), Position = UDim2.new(0, 0, 0.5, -3),
+			BorderSizePixel = 0, Parent = row,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		local active = bind.GetState and bind.GetState()
+		local dotEntry = Paint(dot, "BackgroundColor3", active and "Accent" or "ToggleOff")
+		dotEntry.r = active and "Accent" or "ToggleOff"
+		local name = Create("TextLabel", {
+			Position = UDim2.new(0, 14, 0, 0), Size = UDim2.new(1, -58, 1, 0),
+			BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 11,
+			TextXAlignment = Enum.TextXAlignment.Left, Text = bind.Name, Parent = row,
+		})
+		Paint(name, "TextColor3", "SubText")
+		local key = Create("TextLabel", {
+			AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0),
+			Size = UDim2.new(0, 44, 1, 0), BackgroundTransparency = 1,
+			Font = Enum.Font.GothamSemibold, TextSize = 11,
+			TextXAlignment = Enum.TextXAlignment.Right, AutomaticSize = Enum.AutomaticSize.X,
+			Text = (bind.Key and bind.Key.Name or "None") .. (bind.Mode == "Hold" and " ⩒" or ""), Parent = row,
+		})
+		Paint(key, "TextColor3", active and "Accent" or "Text")
+	end
+end
+
+--============================================================--
+-- THE "PILL" (minimized state: floating logo-button at the top,
+-- draggable, click to reopen the window)
+--============================================================--
+local Pill = Create("TextButton", {
+	Name = "QuickPill", Visible = false, AutomaticSize = Enum.AutomaticSize.X, ZIndex = 6,
+	AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 14),
+	Size = UDim2.new(0, 0, 0, 34), Text = "", AutoButtonColor = false,
+	BorderSizePixel = 0, Parent = Gui,
+}, {
+	Create("UICorner", { CornerRadius = UDim.new(0, 8) }),
+	Create("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 12) }),
+	Create("UIListLayout", {
+		FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 8),
+		VerticalAlignment = Enum.VerticalAlignment.Center, SortOrder = Enum.SortOrder.LayoutOrder,
+	}),
+})
+Paint(Pill, "BackgroundColor3", "Topbar", 0.04)
+-- no accent ring on the pill (outline reads "AI"); depth comes from the shadow
+AddShadow(Pill, 24, 0.5)
+-- drag affordance icon on the LEFT (per request: drag icon, not a logo badge)
+local pillGrip = Create("ImageLabel", {
+	Size = UDim2.new(0, 13, 0, 13), BackgroundTransparency = 1,
+	Image = Crystalized.Icons.move or "", ScaleType = Enum.ScaleType.Fit,
+	LayoutOrder = 0, Parent = Pill,
+})
+Paint(pillGrip, "ImageColor3", "SubText")
+-- brand mark: swapping SetLogo()/logo image updates this too (no "C" diamond)
+local pillLogo = Create("ImageLabel", {
+	Size = UDim2.new(0, 17, 0, 17), BackgroundTransparency = 1,
+	Image = Crystalized.Icons.feather or "", ScaleType = Enum.ScaleType.Fit,
+	LayoutOrder = 1, Parent = Pill,
+})
+Paint(pillLogo, "ImageColor3", "Accent")
+Crystalized._pillLogo = pillLogo
+local pillText = Create("TextLabel", {
+	AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0), BackgroundTransparency = 1,
+	Font = Enum.Font.GothamSemibold, TextSize = 12, Text = ".gg/crystalized",
+	LayoutOrder = 2, Parent = Pill,
+})
+Paint(pillText, "TextColor3", "Text")
+Crystalized._pillText = pillText
+
+-- the pill has NO close ✕ (it cluttered the dock) — right-click/hold instead
+Pill.InputBegan:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.MouseButton2 then
+		reopenSuppressUntil = os.clock() + 1
+		ShowCloseConfirm()
+	end
+end)
+
+--============================================================--
+-- KEYBIND CAPTURE (click a bind chip, press a key)
+--============================================================--
+local capturing = nil   -- the bind entry currently waiting for a key
+
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if capturing then
+		if input.UserInputType == Enum.UserInputType.Keyboard then
+			if input.KeyCode == Enum.KeyCode.Escape then
+				-- cancel capture, keep old key
+			elseif input.KeyCode == Enum.KeyCode.Backspace then
+				capturing.Key = nil
+				capturing.Update()
+			else
+				capturing.Key = input.KeyCode
+				capturing.Update()
+			end
+			capturing = nil
+			RefreshBindPanel()
+		end
+		return
+	end
+	if gameProcessed then return end
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		for _, bind in ipairs(Crystalized._binds) do
+			if bind.Key == input.KeyCode and not bind._held then
+				bind._held = true
+				if bind.Mode == "Hold" then
+					-- HOLD mode: key down = active, key up = inactive
+					if bind.OnHoldStart then Fire(bind.OnHoldStart) else Fire(bind.OnPress) end
+				else
+					Fire(bind.OnPress)
+				end
+			end
+		end
+	end
+end)
+
+-- HOLD-mode binds deactivate on key release
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType == Enum.UserInputType.Keyboard then
+		for _, bind in ipairs(Crystalized._binds) do
+			if bind._held and bind.Key == input.KeyCode then
+				bind._held = false
+				if bind.Mode == "Hold" and bind.OnHoldEnd then Fire(bind.OnHoldEnd) end
+			end
+		end
+	end
+end)
+
+-- Creates one bind entry. getState is optional (drives the accent dot).
+-- Mode = "Press" (tap = toggle, default) or "Hold" (active only while held).
+local function RegisterBind(name, key, onPress, getState)
+	local bind = { Name = name, Key = key, Mode = "Press", _held = false,
+		OnPress = onPress, GetState = getState, Update = function() end, Refresh = function() end }
+	table.insert(Crystalized._binds, bind)
+	RefreshBindPanel()
+	return bind
+end
+
+-- switches a bind between Press and Hold (saves it to configs too)
+local function SetBindMode(bind, mode)
+	if not bind then return end
+	if mode ~= "Hold" and mode ~= "Press" then return end
+	bind.Mode = mode
+	if bind.ModeFlag then Crystalized.Flags[bind.ModeFlag] = mode end
+	bind.Refresh()
+	RefreshBindPanel()
+end
+
+--============================================================--
+-- BIND MODE MENU (the little ⚙ next to keybind chips:
+-- "PRESS to activate" default / "HOLD to activate")
+--============================================================--
+local bindModeMenu = nil
+
+local function CloseBindModeMenu()
+	if bindModeMenu then
+		bindModeMenu:Destroy()
+		bindModeMenu = nil
+	end
+end
+
+local function ShowBindModeMenu(gear, bind)
+	CloseBindModeMenu()
+	local ap, asz = gear.AbsolutePosition, gear.AbsoluteSize
+	local W, H = 164, 76
+	local x = math.clamp(ap.X + asz.X - W, 8, math.max(8, Gui.AbsoluteSize.X - W - 8))
+	local y = ap.Y + asz.Y + 6
+	if y + H > Gui.AbsoluteSize.Y - 8 then y = ap.Y - H - 6 end
+
+	-- click-catcher behind the card: clicking anywhere off the menu closes it
+	local catch = Create("TextButton", {
+		Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "",
+		AutoButtonColor = false, ZIndex = 70, Parent = Gui,
+	})
+	bindModeMenu = catch
+	local card = Create("Frame", {
+		Position = UDim2.fromOffset(x, y), Size = UDim2.new(0, W, 0, H),
+		BorderSizePixel = 0, ZIndex = 71, Parent = catch,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 8) }),
+		Create("UIPadding", {
+			PaddingTop = UDim.new(0, 6), PaddingBottom = UDim.new(0, 6),
+			PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6),
+		}),
+		Create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+		Create("UIScale", { Scale = 0.85 }),
+	})
+	Paint(card, "BackgroundColor3", "Topbar")
+	local menuStroke = Create("UIStroke", { Thickness = 1, Transparency = 0.35, Parent = card })
+	Paint(menuStroke, "Color", "Stroke")
+
+	local function makeOption(text, mode, order)
+		local btn = Create("TextButton", {
+			Size = UDim2.new(1, 0, 0, 30), Text = "", AutoButtonColor = false,
+			BorderSizePixel = 0, ZIndex = 72, LayoutOrder = order, Parent = card,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, 6) }) })
+		Paint(btn, "BackgroundColor3", "Element")
+		local current = (bind.Mode == mode)
+		local dot = Create("Frame", {
+			Position = UDim2.new(0, 9, 0.5, -3), Size = UDim2.new(0, 6, 0, 6),
+			BorderSizePixel = 0, ZIndex = 73, Parent = btn,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		Paint(dot, "BackgroundColor3", current and "Accent" or "ToggleOff")
+		local lbl = Create("TextLabel", {
+			Position = UDim2.new(0, 22, 0, 0), Size = UDim2.new(1, -26, 1, 0),
+			BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 11,
+			TextXAlignment = Enum.TextXAlignment.Left, Text = text, ZIndex = 73, Parent = btn,
+		})
+		Paint(lbl, "TextColor3", current and "Text" or "SubText")
+		btn.MouseButton1Click:Connect(function()
+			SetBindMode(bind, mode)
+			CloseBindModeMenu()
+			if mode == "Hold" then
+				Crystalized:Notify({ Title = "Keybind Mode", Content = text .. " (held keys activate; release to stop)", Duration = 2.5 })
+			end
+		end)
+	end
+	makeOption("PRESS to activate", "Press", 1)
+	makeOption("HOLD to activate", "Hold", 2)
+
+	catch.MouseButton1Click:Connect(CloseBindModeMenu)
+	Tween(card.UIScale, 0.3, { Scale = 1 })
+end
+
+--============================================================--
+-- CONFIG SYSTEM (Obsidian-style; uses executor file functions
+-- with a graceful in-memory fallback)
+--============================================================--
+local CONFIG_FOLDER = "CrystalizedConfigs"
+local memoryConfigs = {}   -- fallback store if file funcs are missing
+
+local function FileSafe(fn, ...)
+	if type(fn) ~= "function" then return nil end
+	local ok, res = pcall(fn, ...)
+	if ok then return res end
+	return nil
+end
+
+local function EnsureFolder()
+	if type(isfolder) == "function" and type(makefolder) == "function" then
+		if not FileSafe(isfolder, CONFIG_FOLDER) then FileSafe(makefolder, CONFIG_FOLDER) end
+	end
+end
+
+-- Serializes/deserializes values that JSON can't hold natively
+local function Serialize(value)
+	if typeof(value) == "Color3" then
+		return { __t = "Color3", math.floor(value.R * 255), math.floor(value.G * 255), math.floor(value.B * 255) }
+	elseif typeof(value) == "EnumItem" then
+		return { __t = "EnumItem", tostring(value.EnumType), value.Name }
+	end
+	return value
+end
+
+local function Deserialize(value)
+	if type(value) == "table" and value.__t == "Color3" then
+		return Color3.fromRGB(value[1], value[2], value[3])
+	elseif type(value) == "table" and value.__t == "EnumItem" then
+		local ok, item = pcall(function() return Enum[value[1]][value[2]] end)
+		if ok then return item end
+		return nil
+	end
+	return value
+end
+
+-- Crystalized:SaveConfig("main")
+function Crystalized:SaveConfig(name)
+	name = tostring(name or "main")
+	local data = {
+		Theme  = Theme.Name,
+		Accent = { Serialize(Theme.Accent) },
+		Flags  = {},
+	}
+	for flag, value in pairs(self.Flags) do
+		if type(value) == "table" then
+			local arr = {}
+			for i, v in ipairs(value) do arr[i] = Serialize(v) end
+			data.Flags[flag] = { __t = "List", arr }
+		else
+			data.Flags[flag] = Serialize(value)
+		end
+	end
+	local json = HttpService:JSONEncode(data)
+	EnsureFolder()
+	if type(writefile) == "function" then
+		FileSafe(writefile, CONFIG_FOLDER .. "/" .. name .. ".json", json)
+	else
+		memoryConfigs[name] = json
+	end
+	self:Notify({ Title = "Config", Content = "Saved config \"" .. name .. "\"", Duration = 2 })
+end
+
+function Crystalized:LoadConfig(name)
+	name = tostring(name or "main")
+	local json
+	if type(readfile) == "function" and type(isfile) == "function" then
+		if FileSafe(isfile, CONFIG_FOLDER .. "/" .. name .. ".json") then
+			json = FileSafe(readfile, CONFIG_FOLDER .. "/" .. name .. ".json")
+		end
+	else
+		json = memoryConfigs[name]
+	end
+	if not json then
+		self:Notify({ Title = "Config", Content = "Config \"" .. name .. "\" not found", Duration = 2 })
+		return
+	end
+	local ok, data = pcall(HttpService.JSONDecode, HttpService, json)
+	if not ok or type(data) ~= "table" then return end
+	self._silent = true
+	if data.Theme then self:SetTheme(data.Theme) end
+	if data.Accent then
+		local accent = Deserialize(data.Accent[1])
+		if accent then self:SetAccent(accent) end
+	end
+	for flag, stored in pairs(data.Flags or {}) do
+		local meta = self._flagMeta[flag]
+		if meta then
+			local value
+			if type(stored) == "table" and stored.__t == "List" then
+				value = {}
+				for i, v in ipairs(stored[1] or {}) do value[i] = Deserialize(v) end
+			else
+				value = Deserialize(stored)
+			end
+			if value ~= nil then pcall(meta.Set, value) end
+		end
+	end
+	self._silent = false
+	RefreshBindPanel()
+	self:Notify({ Title = "Config", Content = "Loaded config \"" .. name .. "\"", Duration = 2 })
+end
+
+-- shareable config codes (per answer 19): export → clipboard code, import → paste.
+-- base64, hand-rolled (no external deps, Luraph-safe)
+local B64_CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
+local function B64Encode(data)
+	local out, i = {}, 1
+	while i <= #data do
+		local b1 = string.byte(data, i)
+		local b2 = i + 1 <= #data and string.byte(data, i + 1) or 0
+		local b3 = i + 2 <= #data and string.byte(data, i + 2) or 0
+		local n = b1 * 65536 + b2 * 256 + b3
+		local c1 = math.floor(n / 262144) % 64
+		local c2 = math.floor(n / 4096) % 64
+		local c3 = math.floor(n / 64) % 64
+		local c4 = n % 64
+		out[#out + 1] = string.sub(B64_CHARS, c1 + 1, c1 + 1)
+		out[#out + 1] = string.sub(B64_CHARS, c2 + 1, c2 + 1)
+		out[#out + 1] = (i + 1 <= #data) and string.sub(B64_CHARS, c3 + 1, c3 + 1) or "="
+		out[#out + 1] = (i + 2 <= #data) and string.sub(B64_CHARS, c4 + 1, c4 + 1) or "="
+		i = i + 3
+	end
+	return table.concat(out)
+end
+local B64_LOOKUP = {}
+for i = 1, 64 do B64_LOOKUP[string.sub(B64_CHARS, i, i)] = i - 1 end
+local function B64Decode(data)
+	data = string.gsub(data, "[^A-Za-z0-9%+%/=]", "")
+	local out, acc, bits = {}, 0, 0
+	for i = 1, #data do
+		local ch = string.sub(data, i, i)
+		if ch ~= "=" then
+			acc = acc * 64 + (B64_LOOKUP[ch] or 0)
+			bits = bits + 6
+			if bits >= 8 then
+				bits = bits - 8
+				out[#out + 1] = string.char(math.floor(acc / 2 ^ bits) % 256)
+			end
+		end
+	end
+	return table.concat(out)
+end
+
+function Crystalized:ExportConfigCode(name)
+	name = tostring(name or "main")
+	local json
+	if type(readfile) == "function" and type(isfile) == "function"
+	and FileSafe(isfile, CONFIG_FOLDER .. "/" .. name .. ".json") then
+		json = FileSafe(readfile, CONFIG_FOLDER .. "/" .. name .. ".json")
+	else
+		json = memoryConfigs[name]
+	end
+	if not json then
+		self:Notify({ Title = "Config", Type = "warn", Content = "Save \"" .. name .. "\" first", Duration = 3 })
+		return nil
+	end
+	local code = "CRYS1-" .. B64Encode(json)
+	if type(setclipboard) == "function" then
+		pcall(setclipboard, code)
+		self:Notify({ Title = "Config", Type = "success", Content = "Code for \"" .. name .. "\" copied — paste it to anyone", Duration = 4 })
+	end
+	return code
+end
+
+function Crystalized:ImportConfigCode(code, saveAs)
+	code = tostring(code or "")
+	code = string.gsub(code, "^%s*CRYS1%-", "")
+	local ok, json = pcall(B64Decode, code)
+	if not ok then
+		self:Notify({ Title = "Config", Type = "error", Content = "That code is not a Crystalized config", Duration = 3 })
+		return false
+	end
+	local ok2, data = pcall(HttpService.JSONDecode, HttpService, json)
+	if not ok2 or type(data) ~= "table" or type(data.Flags) ~= "table" then
+		self:Notify({ Title = "Config", Type = "error", Content = "That code is not a Crystalized config", Duration = 3 })
+		return false
+	end
+	saveAs = tostring(saveAs or "imported")
+	-- hand it to the same path LoadConfig uses
+	-- hand it to the same path LoadConfig uses
+	memoryConfigs[saveAs] = json
+	if type(writefile) == "function" then
+		FileSafe(writefile, CONFIG_FOLDER .. "/" .. saveAs .. ".json", json)
+	end
+	self:LoadConfig(saveAs)
+	return true
+end
+
+function Crystalized:DeleteConfig(name)
+	name = tostring(name or "main")
+	if type(delfile) == "function" and type(isfile) == "function" then
+		if FileSafe(isfile, CONFIG_FOLDER .. "/" .. name .. ".json") then
+			FileSafe(delfile, CONFIG_FOLDER .. "/" .. name .. ".json")
+		end
+	else
+		memoryConfigs[name] = nil
+	end
+end
+
+function Crystalized:ListConfigs()
+	local list = {}
+	if type(listfiles) == "function" then
+		EnsureFolder()
+		for _, path in ipairs(FileSafe(listfiles, CONFIG_FOLDER) or {}) do
+			local name = path:match("([^/\\]+)%.json$")
+			if name then table.insert(list, name) end
+		end
+	else
+		for name in pairs(memoryConfigs) do
+			if name ~= "__autoload" then table.insert(list, name) end
+		end
+	end
+	table.sort(list)
+	return list
+end
+
+function Crystalized:SetAutoload(name)
+	EnsureFolder()
+	if type(writefile) == "function" then
+		FileSafe(writefile, CONFIG_FOLDER .. "/autoload.txt", name)
+	else
+		memoryConfigs.__autoload = name
+	end
+end
+
+function Crystalized:LoadAutoload()
+	local name
+	if type(readfile) == "function" and type(isfile) == "function" then
+		if FileSafe(isfile, CONFIG_FOLDER .. "/autoload.txt") then
+			name = FileSafe(readfile, CONFIG_FOLDER .. "/autoload.txt")
+		end
+	else
+		name = memoryConfigs.__autoload
+	end
+	if name and name ~= "" then self:LoadConfig(name) end
+end
+
+--============================================================--
+-- PREMIUM SYSTEM (gold-locked features + key redemption)
+--============================================================--
+Crystalized.IsPremium   = false
+Crystalized._premiumEls = {}
+Crystalized.PremiumKeys = { "crystal123" }              -- ◀ REPLACE with your real keys
+Crystalized.BuyLink     = "discord.gg/crystalized"      -- where BUY sends people
+Crystalized.DiscordInvite = "discord.gg/crystalized"    -- sidebar footer chip copies this
+
+function Crystalized:IsKeyValid(key)
+	key = string.lower(tostring(key or ""))
+	for _, k in ipairs(self.PremiumKeys) do
+		if key == string.lower(k) then return true end
+	end
+	return false
+end
+
+function Crystalized:UnlockPremium(key)
+	if self.IsPremium then return end
+	self.IsPremium = true
+	-- remember the key so the next session stays unlocked
+	EnsureFolder()
+	if type(writefile) == "function" then
+		FileSafe(writefile, CONFIG_FOLDER .. "/premium.txt", tostring(key or ""))
+	else
+		memoryConfigs.__premium = key
+	end
+	for _, fn in ipairs(self._premiumEls) do pcall(fn) end
+	-- premium look: the whole hub gilds itself on successful redemption
+	if self.PremiumGold ~= false then
+		pcall(function() self:SetAccent("Gold") end)
+		self:Notify({ Title = "Premium", Type = "success",
+			Content = "Unlocked — the hub is wearing gold now", Duration = 4 })
+	else
+		self:Notify({ Title = "Premium", Type = "success",
+			Content = "Unlocked! Gold features are live", Duration = 4 })
+	end
+end
+
+-- the "ENTER KEY / BUY / REDEEM" modal (clean purchase flow:
+-- diamond logo -> which feature -> key field -> Buy | Redeem)
+local function ShowPremiumPrompt(featureName)
+	if Crystalized.IsPremium then return end
+	local dim = Create("TextButton", {
+		Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 90, Parent = Gui,
+	})
+	TweenService:Create(dim, TweenInfo.new(0.25, Enum.EasingStyle.Quint), { BackgroundTransparency = 0.45 }):Play()
+	local card = Create("TextButton", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 340, 0, 254), Text = "", AutoButtonColor = false,
+		BorderSizePixel = 0, ZIndex = 91, Parent = dim,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 12) }),
+		Create("UIScale", { Scale = 0.8 }),
+	})
+	Paint(card, "BackgroundColor3", "Topbar", 0.02)
+	local cstroke = Create("UIStroke", { Thickness = 1, Color = Theme.Gold, Transparency = 0.35, Parent = card })
+
+	-- gold diamond logo (matches the topbar branding)
+	local logo = Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.new(0.5, 0, 0, 16),
+		Size = UDim2.new(0, 26, 0, 26), BorderSizePixel = 0, Rotation = 45,
+		ZIndex = 92, Parent = card, BackgroundColor3 = Theme.Gold,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 6) }),
+		Create("TextLabel", {
+			Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Rotation = -45,
+			Font = Enum.Font.GothamBold, TextSize = 15, Text = "★",
+			TextColor3 = Color3.fromRGB(46, 33, 6), ZIndex = 93,
+		}),
+	})
+	local title = Create("TextLabel", {
+		Position = UDim2.new(0, 0, 0, 48), Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold, TextSize = 16, Text = "Premium Feature",
+		TextColor3 = Theme.Gold, ZIndex = 92, Parent = card,
+	})
+	-- feature name as a gold-bordered chip
+	local chip = Create("TextLabel", {
+		AnchorPoint = Vector2.new(0.5, 0),
+		Position = UDim2.new(0.5, 0, 0, 72), AutomaticSize = Enum.AutomaticSize.X,
+		Size = UDim2.new(0, 0, 0, 20), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamSemibold, TextSize = 11, Text = "PROTECTED  •  " .. tostring(featureName),
+		TextColor3 = Theme.Gold, ZIndex = 92, Parent = card,
+	}, {
+		Create("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }),
+		Create("UIStroke", { Thickness = 1, Color = Theme.Gold, Transparency = 0.55 }),
+		Create("UICorner", { CornerRadius = UDim.new(1, 0) }),
+	})
+	local sub = Create("TextLabel", {
+		Position = UDim2.new(0, 24, 0, 98), Size = UDim2.new(1, -48, 0, 14), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium, TextSize = 11,
+		Text = "A key instantly unlocks every gold feature.",
+		ZIndex = 92, Parent = card,
+	})
+	Paint(sub, "TextColor3", "SubText")
+
+	local keybox = Create("TextBox", {
+		Position = UDim2.new(0, 22, 0, 122), Size = UDim2.new(1, -44, 0, 30),
+		BorderSizePixel = 0, Font = Enum.Font.GothamSemibold, TextSize = 13, Text = "",
+		TextXAlignment = Enum.TextXAlignment.Left, PlaceholderText = "Enter key... (demo: crystal123)",
+		ClearTextOnFocus = false, ZIndex = 92, Parent = card,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 7) }),
+		Create("UIPadding", { PaddingLeft = UDim.new(0, 11), PaddingRight = UDim.new(0, 11) }),
+		Create("UIStroke", { Thickness = 1, Color = Theme.Gold, Transparency = 0.72 }),
+	})
+	Paint(keybox, "BackgroundColor3", "Element")
+	Paint(keybox, "TextColor3", "Text")
+	Paint(keybox, "PlaceholderColor3", "SubText")
+
+	-- tidy info box: slides in after BUY copies the link
+	local info = Create("TextLabel", {
+		Position = UDim2.new(0, 22, 0, 160), Size = UDim2.new(1, -44, 0, 0),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1, Visible = false, TextWrapped = true,
+		Font = Enum.Font.GothamSemibold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
+		RichText = true, ZIndex = 92, Parent = card,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 7) }),
+		Create("UIPadding", {
+			PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7),
+			PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10),
+		}),
+	})
+	Paint(info, "BackgroundColor3", "Element")
+	Paint(info, "TextColor3", "SubText")
+
+	-- actions: gold BUY (copies the link) + accent REDEEM
+	local buyBtn = Create("TextButton", {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 22, 1, -18),
+		Size = UDim2.new(0.5, -27, 0, 34),
+		Text = "Buy Key  →", Font = Enum.Font.GothamBold, TextSize = 13,
+		BackgroundColor3 = Theme.Gold, TextColor3 = Color3.fromRGB(46, 33, 6),
+		AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 92, Parent = card,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 8) }) })
+	local redeemBtn = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -22, 1, -18),
+		Size = UDim2.new(0.5, -27, 0, 34), Text = "Redeem",
+		Font = Enum.Font.GothamBold, TextSize = 13, TextColor3 = Color3.new(1, 1, 1),
+		AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 92, Parent = card,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 8) }) })
+	Paint(redeemBtn, "BackgroundColor3", "Accent")
+
+	-- tiny ✕ in the corner as the obvious dismiss
+	local xbtn = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 10),
+		Size = UDim2.new(0, 20, 0, 20), Text = "✕", Font = Enum.Font.GothamBold, TextSize = 11,
+		BackgroundTransparency = 1, AutoButtonColor = false, ZIndex = 93, Parent = card,
+	})
+	Paint(xbtn, "TextColor3", "SubText")
+
+	local function dismiss()
+		TweenService:Create(dim, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
+		Fade(card, true, 0.15)
+		task.delay(0.22, function() dim:Destroy() end)
+	end
+	dim.MouseButton1Click:Connect(dismiss)
+	xbtn.MouseButton1Click:Connect(dismiss)
+
+	local function showInfo(text)
+		-- card grows a touch so the info box never squeezes the buttons
+		TweenService:Create(card, TweenInfo.new(0.25, Enum.EasingStyle.Quint), {
+			Size = UDim2.new(0, 340, 0, 284),
+		}):Play()
+		info.Text = text
+		info.Visible = true
+		info.BackgroundTransparency = 1
+		info.TextTransparency = 1
+		Tween(info, 0.3, { BackgroundTransparency = 0, TextTransparency = 0 }, "Snappy")
+	end
+
+	buyBtn.MouseButton1Click:Connect(function()
+		if type(setclipboard) == "function" then
+			pcall(setclipboard, Crystalized.BuyLink)
+			-- the info box tells the player exactly what to do next
+			showInfo("<font color=\"#7ce29b\">Copied!</font> <b>" .. Crystalized.BuyLink ..
+				"</b> is in your clipboard — paste it into your browser, buy a key, then redeem it here.")
+		else
+			showInfo("No clipboard on this device. Go to: <b>" .. Crystalized.BuyLink .. "</b>")
+		end
+	end)
+
+	local function shake()
+		-- little left-right wiggle for wrong keys
+		local baseX = card.Position.X
+		for i = 1, 3 do
+			TweenService:Create(card, TweenInfo.new(0.05), { Position = UDim2.new(baseX.Scale, baseX.Offset - 7, 0.5, 0) }):Play()
+			task.wait(0.05)
+			TweenService:Create(card, TweenInfo.new(0.05), { Position = UDim2.new(baseX.Scale, baseX.Offset + 7, 0.5, 0) }):Play()
+			task.wait(0.05)
+		end
+		TweenService:Create(card, TweenInfo.new(0.08), { Position = UDim2.new(baseX.Scale, baseX.Offset, 0.5, card.Position.Y.Offset) }):Play()
+	end
+
+	local function tryRedeem()
+		if Crystalized:IsKeyValid(keybox.Text) then
+			local usedKey = keybox.Text
+			dismiss()
+			Crystalized:UnlockPremium(usedKey)
+		else
+			task.spawn(shake)
+			keybox.Text = ""
+			keybox.PlaceholderText = "Invalid key!"
+			keybox.PlaceholderColor3 = Color3.fromRGB(240, 90, 100)
+		end
+	end
+	redeemBtn.MouseButton1Click:Connect(tryRedeem)
+	keybox.FocusLost:Connect(function(enter) if enter then tryRedeem() end end)
+	Tween(card.UIScale, 0.45, { Scale = 1 }, "Pop")
+end
+
+--============================================================--
+-- THEME SWAP API
+--============================================================--
+function Crystalized:SetTheme(name)
+	if not BaseThemes[name] then return end
+	Theme.Name = name
+	RebuildTheme()
+	ApplyTheme()
+end
+
+function Crystalized:SetAccent(accent)
+	if type(accent) == "string" then
+		Theme.Accent = self.Accents[accent] or Theme.Accent
+	elseif typeof(accent) == "Color3" then
+		Theme.Accent = accent
+	end
+	RebuildTheme()
+	ApplyTheme()
+end
+
+-- Destroys the whole ui (settings tab has a button for this)
+function Crystalized:Unload()
+	Gui:Destroy()
+end
+
+--============================================================--
+-- ELEMENT BUILDERS (shared by every Section)
+-- Each one: paints itself, registers its Flag, supports
+-- Description tooltips, and returns a small control table.
+--============================================================--
+
+-- Makes the base row inside a section + registers search text
+local function MakeRow(sectionHolder, height, searchText)
+	local row = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, height), BorderSizePixel = 0, Parent = sectionHolder,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 6) }) })
+	Paint(row, "BackgroundColor3", "Element")
+	row:SetAttribute("IsRow", true)
+	if searchText then row:SetAttribute("SearchText", string.lower(searchText)) end
+	return row
+end
+
+local function MakeNameLabel(parent, name)
+	local label = Create("TextLabel", {
+		Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(1, -90, 1, 0),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 13,
+		TextXAlignment = Enum.TextXAlignment.Left, Text = tostring(name), Parent = parent,
+	})
+	local entry = Paint(label, "TextColor3", "Text")
+	return label, entry
+end
+
+-- Registers an element's flag so configs can save/restore it
+local function RegisterFlag(flag, value, setFn, typeName)
+	if not flag then return end
+	Crystalized.Flags[flag] = value
+	Crystalized._flagMeta[flag] = { Type = typeName, Set = setFn }
+end
+
+--▶ PREMIUM GATE -- call at the end of any builder to gold-lock a row.
+-- The row turns gold, gains a PRO badge, and all clicks open the key
+-- prompt instead of working, until Crystalized:UnlockPremium() runs.
+local function Premiumize(row, nameLabel, nameEntry, featureName)
+	if Crystalized.IsPremium then return end
+	nameEntry.r = "Gold"
+	Recolor(nameEntry, true)
+	-- gold PRO badge placed right after the name text
+	local w = 90
+	pcall(function()
+		w = game:GetService("TextService"):GetTextSize(featureName, 13,
+			Enum.Font.GothamMedium, Vector2.new(400, 20)).X
+	end)
+	local badge = Create("TextLabel", {
+		AutomaticSize = Enum.AutomaticSize.X, Position = UDim2.new(0, w + 6, 0.5, -7),
+		Size = UDim2.new(0, 0, 0, 14), BackgroundColor3 = Theme.Gold,
+		TextColor3 = Color3.fromRGB(46, 33, 6), Font = Enum.Font.GothamBold, TextSize = 9,
+		Text = "PRO", BorderSizePixel = 0, ZIndex = 3, Parent = nameLabel,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 4) }),
+		Create("UIPadding", { PaddingLeft = UDim.new(0, 4), PaddingRight = UDim.new(0, 4) }),
+	})
+	local glow = Create("UIStroke", { Thickness = 1, Color = Theme.Gold, Transparency = 0.5, Parent = row })
+	-- animated gold shine sweep across premium elements
+	local pShine = Create("UIGradient", {
+		Color = ColorSequence.new({
+			NumberSequenceKeypoint.new(0,   Color3.fromRGB(255, 215, 100)),
+			NumberSequenceKeypoint.new(0.4, Color3.fromRGB(255, 240, 180)),
+			NumberSequenceKeypoint.new(0.6, Color3.fromRGB(255, 199, 64)),
+			NumberSequenceKeypoint.new(1,   Color3.fromRGB(255, 215, 100)),
+		}),
+		Offset = Vector2.new(-1, 0),
+		Parent = row,
+	})
+	task.spawn(function()
+		while row and row.Parent and pShine and pShine.Parent do
+			pShine.Offset = Vector2.new(-1, 0)
+			local t = TweenService:Create(pShine, TweenInfo.new(1.8, Enum.EasingStyle.Linear), {
+				Offset = Vector2.new(1, 0) })
+			t:Play()
+			t.Completed:Wait()
+			task.wait(2.8)
+		end
+	end)
+	local blocker = Create("TextButton", {
+		Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "",
+		ZIndex = 20, AutoButtonColor = false, Parent = row,
+	})
+	blocker.MouseButton1Click:Connect(function() ShowPremiumPrompt(featureName) end)
+	-- undoing the gold when premium unlocks
+	table.insert(Crystalized._premiumEls, function()
+		badge:Destroy()
+		glow:Destroy()
+		pcall(function() pShine:Destroy() end)
+		blocker:Destroy()
+		nameEntry.r = "Text"
+		Recolor(nameEntry, false)
+	end)
+end
+
+--▶ BUTTON ----------------------------------------------------
+local function BuildButton(section, opts)
+	local row = MakeRow(section._holder, 36, opts.Name)
+	local nameLbl, nameEntry = MakeNameLabel(row, opts.Name)
+	local arrow = Create("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0),
+		Size = UDim2.new(0, 12, 0, 12), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold, TextSize = 13, Text = ">", Parent = row,
+	})
+	local arrowEntry = Paint(arrow, "TextColor3", "SubText")
+	-- per-element styling (same as toggles/sliders): Color pins the arrow; Danger = red + ⚠
+	local elemColor = opts.Danger and DANGER_COLOR or ResolveColor(opts.Color)
+	if elemColor then arrowEntry.c = elemColor Recolor(arrowEntry, true) end
+	if opts.Danger then
+		nameLbl.Text = "▲  " .. nameLbl.Text
+		nameEntry.c = DANGER_COLOR
+	end
+	local click = Create("TextButton", {
+		Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "",
+		AutoButtonColor = false, ZIndex = 2, Parent = row,
+	})
+	Hoverify(row, "Element")
+	AttachTooltip(row, opts.Description)
+	click.MouseButton1Click:Connect(function()
+		-- press flash
+		local flash = Create("Frame", {
+			Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 0.7,
+			BorderSizePixel = 0, ZIndex = 3, Parent = row,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, 6) }) })
+		Paint(flash, "BackgroundColor3", "Accent")
+		Tween(flash, 0.4, { BackgroundTransparency = 1 }, "Snappy")
+		task.delay(0.45, function() flash:Destroy() end)
+		Fire(opts.Callback)
+	end)
+	if opts.Premium and not Crystalized.IsPremium then
+		Premiumize(row, nameLbl, nameEntry, tostring(opts.Name))
+	end
+	return {}
+end
+
+--▶ TOGGLE (with optional keybind chip on the right) ------------
+local function BuildToggle(section, opts)
+	local row = MakeRow(section._holder, 38, opts.Name)
+	local nameLbl, nameEntry = MakeNameLabel(row, opts.Name)
+	AttachTooltip(row, opts.Description)
+	-- switch
+	local switch = Create("Frame", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0),
+		Size = UDim2.new(0, 38, 0, 20), BorderSizePixel = 0, Parent = row,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	local switchEntry = Paint(switch, "BackgroundColor3", "ToggleOff")
+	-- per-element styling: Color = "Azure"/"#hex"/Color3, or Danger = true (hot red + ⚠)
+	local elemColor = opts.Danger and DANGER_COLOR or ResolveColor(opts.Color)
+	if elemColor then switchEntry.c = elemColor end
+	if opts.Danger then
+		nameLbl.Text = "▲  " .. nameLbl.Text
+		nameEntry.c = DANGER_COLOR
+	end
+	local knob = Create("Frame", {
+		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 3, 0.5, 0),
+		Size = UDim2.new(0, 14, 0, 14), BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0, Parent = switch,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	local click = Create("TextButton", {
+		Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "",
+		AutoButtonColor = false, ZIndex = 2, Parent = row,
+	})
+
+	local state = opts.Default == true
+	local Toggle = {}
+
+	local function apply(animate, fireCallback)
+		switchEntry.c = state and elemColor or nil -- custom color only while ON
+		switchEntry.r = (state and not elemColor) and "Accent" or "ToggleOff"
+		Recolor(switchEntry, not animate)
+		local target = state and UDim2.new(1, -17, 0.5, 0) or UDim2.new(0, 3, 0.5, 0)
+		if animate then Tween(knob, 0.4, { Position = target }) else knob.Position = target end
+		if opts.Flag then Crystalized.Flags[opts.Flag] = state end
+		if fireCallback then
+			if opts.Notify ~= false and not Crystalized._silent then
+				Crystalized:Notify({
+					Title = tostring(opts.Name),
+					Content = state and "Enabled" or "Disabled",
+					Duration = 1.6,
+				})
+			end
+			Fire(opts.Callback, state)
+		end
+		RefreshBindPanel()
+	end
+
+	click.MouseButton1Click:Connect(function()
+		state = not state
+		apply(true, true)
+	end)
+
+	function Toggle:Set(value, noCallback)
+		state = value == true
+		apply(true, not noCallback)
+	end
+	function Toggle:Get() return state end
+
+	-- optional keybind chip: "keybinds attachable to toggles"
+	-- (skipped on touch-only devices -- no keyboard to bind)
+	if opts.Keybind and HAS_KEYBOARD then
+		local chip = Create("TextButton", {
+			AnchorPoint = Vector2.new(1, 0.5),
+			Position = UDim2.new(1, -58, 0.5, 0), AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(0, 0, 0, 20), Text = "", AutoButtonColor = false,
+			BorderSizePixel = 0, ZIndex = 3, Parent = row,
+		}, {
+			Create("UICorner", { CornerRadius = UDim.new(0, 5) }),
+			Create("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 6) }),
+		})
+		Paint(chip, "BackgroundColor3", "Card")
+		local chipLabel = Create("TextLabel", {
+			AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
+			BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 10,
+			Parent = chip,
+		})
+		Paint(chipLabel, "TextColor3", "SubText")
+		-- ⚙ gear to the LEFT of the chip: opens the PRESS/HOLD mode menu
+		local gear = Create("TextButton", {
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0, -6, 0.5, 0),
+			Size = UDim2.new(0, 17, 0, 17), Text = "⚙", Font = Enum.Font.GothamBold, TextSize = 9,
+			AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 4, Parent = chip,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, 4) }) })
+		Paint(gear, "BackgroundColor3", "Card")
+		local gearEntry = Paint(gear, "TextColor3", "SubText")
+		local bind = RegisterBind(tostring(opts.Name), opts.Keybind, function()
+			state = not state
+			apply(true, true)
+		end, function() return state end)
+		-- HOLD mode: held key = on, released = off
+		bind.OnHoldStart = function()
+			if not state then state = true apply(true, true) end
+		end
+		bind.OnHoldEnd = function()
+			if state then state = false apply(true, true) end
+		end
+		bind.Refresh = function()
+			gearEntry.r = bind.Mode == "Hold" and "Accent" or "SubText"
+			Recolor(gearEntry, true)
+		end
+		bind.Update = function()
+			chipLabel.Text = bind.Key and bind.Key.Name or "None"
+			RefreshBindPanel()
+		end
+		bind.Update()
+		bind.Refresh()
+		gear.MouseButton1Click:Connect(function()
+			ShowBindModeMenu(gear, bind)
+		end)
+		chip.MouseButton1Click:Connect(function()
+			capturing = bind
+			chipLabel.Text = "..."
+		end)
+		-- persist the mode next to the toggle's flag so configs remember it
+		if opts.Flag then
+			bind.ModeFlag = opts.Flag .. ".mode"
+			RegisterFlag(bind.ModeFlag, "Press", function(v) SetBindMode(bind, v) end, "BindMode")
+		end
+	end
+
+	RegisterFlag(opts.Flag, state, function(v) Toggle:Set(v, true) end, "Toggle")
+	apply(false, false)
+	if opts.Premium and not Crystalized.IsPremium then
+		Premiumize(row, nameLbl, nameEntry, tostring(opts.Name))
+	end
+	return Toggle
+end
+
+--▶ SLIDER (drag + click-to-type value box) ----------------------
+local function BuildSlider(section, opts)
+	local min, max = opts.Min or 0, opts.Max or 100
+	local decimals = opts.Decimals or 0
+	local suffix = opts.Suffix or ""
+	local value = math.clamp(opts.Default or min, min, max)
+	local Slider = {}
+
+	local row = MakeRow(section._holder, 52, opts.Name)
+	local nameLbl, nameEntry = MakeNameLabel(row, opts.Name)
+	nameLbl.Size = UDim2.new(1, -150, 0, 30)
+	AttachTooltip(row, opts.Description)
+
+	-- editable value box (click it and type!)
+	local box = Create("TextBox", {
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -12, 0, 7),
+		Size = UDim2.new(0, 64, 0, 20), BorderSizePixel = 0, TextXAlignment = Enum.TextXAlignment.Center,
+		Font = Enum.Font.GothamSemibold, TextSize = 11, ClearTextOnFocus = false, Parent = row,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 5) }) })
+	Paint(box, "BackgroundColor3", "Card")
+	Paint(box, "TextColor3", "Text")
+
+	-- per-element styling: Color = "Emerald"/#hex/Color3 pins the fill; Danger = true goes red + ⚠
+	local elemColor = opts.Danger and DANGER_COLOR or ResolveColor(opts.Color)
+	if opts.Danger then
+		nameLbl.Text = "▲  " .. nameLbl.Text
+		nameEntry.c = DANGER_COLOR
+	end
+
+	-- track + fill + knob
+	local track = Create("Frame", {
+		Position = UDim2.new(0, 12, 0, 36), Size = UDim2.new(1, -24, 0, 6),
+		BorderSizePixel = 0, Parent = row,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	Paint(track, "BackgroundColor3", "ToggleOff")
+	local fill = Create("Frame", {
+		Size = UDim2.new(0, 0, 1, 0), BorderSizePixel = 0, Parent = track,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	local fillEntry = Paint(fill, "BackgroundColor3", "Accent")
+	if elemColor then fillEntry.c = elemColor Recolor(fillEntry, true) end
+	local knob = Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.new(0, 12, 0, 12), BackgroundColor3 = Color3.new(1, 1, 1),
+		BorderSizePixel = 0, Parent = track,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	-- big invisible grabber (easier on touch)
+	local grab = Create("TextButton", {
+		Size = UDim2.new(1, 0, 0, 24), Position = UDim2.new(0, 0, 0.5, -12),
+		BackgroundTransparency = 1, Text = "", Parent = track,
+	})
+
+	local fmt = "%." .. decimals .. "f"
+	local function display() box.Text = string.format(fmt, value) .. suffix end
+
+	local function apply(animate, fireCallback)
+		local scale = (max == min) and 0 or (value - min) / (max - min)
+		if animate then
+			Tween(fill, 0.25, { Size = UDim2.new(scale, 0, 1, 0) }, "Snappy")
+			Tween(knob, 0.25, { Position = UDim2.new(scale, 0, 0.5, 0) }, "Snappy")
+		else
+			fill.Size = UDim2.new(scale, 0, 1, 0)
+			knob.Position = UDim2.new(scale, 0, 0.5, 0)
+		end
+		display()
+		if opts.Flag then Crystalized.Flags[opts.Flag] = value end
+		if fireCallback then Fire(opts.Callback, value) end
+	end
+
+	local function setFromX(xPos)
+		local scale = math.clamp((xPos - track.AbsolutePosition.X) / track.AbsoluteSize.X, 0, 1)
+		value = Round(min + (max - min) * scale, decimals)
+		apply(false, true)
+	end
+
+	local dragging = false
+	grab.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = true
+			setFromX(input.Position.X)
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			dragging = false
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch) then
+			setFromX(input.Position.X)
+		end
+	end)
+
+	box.FocusLost:Connect(function(enter)
+		if enter then
+			local typed = tonumber((box.Text:gsub("[^%d%.%-]", "")))
+			if typed then
+				value = math.clamp(Round(typed, decimals), min, max)
+				apply(true, true)
+			else
+				display()
+			end
+		end
+	end)
+
+	function Slider:Set(v, noCallback)
+		value = math.clamp(Round(v, decimals), min, max)
+		apply(true, not noCallback)
+	end
+	function Slider:Get() return value end
+
+	RegisterFlag(opts.Flag, value, function(v) Slider:Set(v, true) end, "Slider")
+	apply(false, false)
+	if opts.Premium and not Crystalized.IsPremium then
+		Premiumize(row, nameLbl, nameEntry, tostring(opts.Name))
+	end
+	return Slider
+end
+
+--▶ DROPDOWN (single or multi select) ----------------------------
+-- Multi = true   -> Default = {"ESP", "Chams"}  Callback gets a TABLE
+-- Multi = false  -> Default = "ESP"             Callback gets a string
+local function BuildDropdown(section, opts)
+	local options = opts.Options or {}
+	local multi = opts.Multi == true
+	-- selected state: single -> one value, multi -> { [option] = true }
+	local selected = multi and {} or opts.Default
+	if multi and type(opts.Default) == "table" then
+		for _, v in ipairs(opts.Default) do selected[v] = true end
+	end
+	local Dropdown = {}
+	local open = false
+
+	local row = MakeRow(section._holder, 38, opts.Name)
+	row.ClipsDescendants = true
+	AttachTooltip(row, opts.Description)
+
+	local header = Create("TextButton", {
+		Size = UDim2.new(1, 0, 0, 38), BackgroundTransparency = 1, Text = "",
+		AutoButtonColor = false, ZIndex = 2, Parent = row,
+	})
+	local nameLbl, nameEntry = MakeNameLabel(header, opts.Name)
+	nameLbl.Size = UDim2.new(0.5, -12, 1, 0)
+	local valueLabel = Create("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -30, 0.5, 0),
+		Size = UDim2.new(0.45, 0, 1, 0), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamMedium, TextSize = 11, TextTruncate = Enum.TextTruncate.AtEnd,
+		TextXAlignment = Enum.TextXAlignment.Right, ZIndex = 2, Parent = row,
+	})
+	Paint(valueLabel, "TextColor3", "SubText")
+	local chevron = Create("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0),
+		Size = UDim2.new(0, 12, 0, 12), BackgroundTransparency = 1, Rotation = 90,
+		Font = Enum.Font.GothamBold, TextSize = 12, Text = ">", ZIndex = 2, Parent = row,
+	})
+	Paint(chevron, "TextColor3", "SubText")
+
+	local list = Create("Frame", {
+		Position = UDim2.new(0, 6, 0, 40), Size = UDim2.new(1, -12, 0, 0),
+		BackgroundTransparency = 1, Parent = row,
+	}, {
+		Create("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }),
+		Create("UIPadding", { PaddingBottom = UDim.new(0, 6) }),
+	})
+
+	local optionRefs = {}   -- { {option=..., btn=..., label=..., check=...} }
+
+	local function selectionArray()
+		local arr = {}
+		if multi then
+			for _, o in ipairs(options) do if selected[o] then table.insert(arr, o) end end
+		elseif selected ~= nil then
+			table.insert(arr, selected)
+		end
+		return arr
+	end
+
+	local function selectedText()
+		local arr = selectionArray()
+		return #arr > 0 and table.concat(arr, ", ") or "None"
+	end
+
+	local function currentSelection()
+		if multi then return selectionArray() end
+		return selected
+	end
+
+	local function refreshVisuals()
+		for _, ref in ipairs(optionRefs) do
+			local isSel = (multi and selected[ref.option] == true) or (not multi and selected == ref.option)
+			ref.label.Font = isSel and Enum.Font.GothamSemibold or Enum.Font.GothamMedium
+			if ref.check then ref.check.Text = isSel and "✓" or "" end
+		end
+	end
+
+	local function buildOptions()
+		for _, ref in ipairs(optionRefs) do ref.btn:Destroy() end
+		table.clear(optionRefs)
+		for order, option in ipairs(options) do
+			local optRow = Create("TextButton", {
+				Size = UDim2.new(1, 0, 0, 26), Text = "", AutoButtonColor = false,
+				BorderSizePixel = 0, LayoutOrder = order, Parent = list,
+			}, { Create("UICorner", { CornerRadius = UDim.new(0, 5) }) })
+			Paint(optRow, "BackgroundColor3", "Card")
+			local check
+			if multi then
+				check = Create("TextLabel", {
+					Position = UDim2.new(0, 8, 0, 0), Size = UDim2.new(0, 14, 1, 0),
+					BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 11,
+					TextXAlignment = Enum.TextXAlignment.Left, Parent = optRow,
+				})
+				Paint(check, "TextColor3", "Accent")
+			end
+			local label = Create("TextLabel", {
+				Position = UDim2.new(0, multi and 26 or 10, 0, 0), Size = UDim2.new(1, -30, 1, 0),
+				BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 12,
+				TextXAlignment = Enum.TextXAlignment.Left, Text = tostring(option), Parent = optRow,
+			})
+			Paint(label, "TextColor3", "Text")
+			table.insert(optionRefs, { option = option, btn = optRow, label = label, check = check })
+			optRow.MouseButton1Click:Connect(function()
+				if multi then
+					if selected[option] then selected[option] = nil else selected[option] = true end
+				else
+					selected = option
+					open = false
+					Tween(row, 0.35, { Size = UDim2.new(1, 0, 0, 38) })
+					Tween(chevron, 0.35, { Rotation = 90 }, "Snappy")
+				end
+				valueLabel.Text = selectedText()
+				refreshVisuals()
+				if opts.Flag then Crystalized.Flags[opts.Flag] = currentSelection() end
+				Fire(opts.Callback, currentSelection())
+			end)
+		end
+		refreshVisuals()
+	end
+
+	buildOptions()
+	valueLabel.Text = selectedText()
+
+	header.MouseButton1Click:Connect(function()
+		open = not open
+		local h = 38
+		if open then h = 38 + 4 + (#optionRefs * 29) + 6 end
+		Tween(row, 0.35, { Size = UDim2.new(1, 0, 0, h) })
+		Tween(chevron, 0.35, { Rotation = open and 270 or 90 }, "Snappy")
+	end)
+
+	function Dropdown:Set(v)
+		if multi and type(v) == "table" then
+			selected = {}
+			for _, item in ipairs(v) do selected[item] = true end
+		elseif not multi then
+			selected = v
+		end
+		valueLabel.Text = selectedText()
+		refreshVisuals()
+	end
+	function Dropdown:Refresh(newOptions)
+		options = newOptions or {}
+		buildOptions()
+		valueLabel.Text = selectedText()
+	end
+	function Dropdown:Get() return currentSelection() end
+
+	RegisterFlag(opts.Flag, currentSelection(), function(v) Dropdown:Set(v) end, "Dropdown")
+	if opts.Premium and not Crystalized.IsPremium then
+		Premiumize(row, nameLbl, nameEntry, tostring(opts.Name))
+	end
+	return Dropdown
+end
+
+--▶ KEYBIND (standalone) ------------------------------------------
+local function BuildKeybind(section, opts)
+	if not HAS_KEYBOARD then
+		-- touch-only: keep the flag alive for configs, but render nothing
+		RegisterFlag(opts.Flag, opts.Default, function() end, "Keybind")
+		return { Set = function() end, Get = function() return nil end }
+	end
+	local row = MakeRow(section._holder, 38, opts.Name)
+	MakeNameLabel(row, opts.Name)
+	AttachTooltip(row, opts.Description)
+	local chip = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0),
+		AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 0, 22), Text = "",
+		AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 3, Parent = row,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 5) }),
+		Create("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }),
+	})
+	Paint(chip, "BackgroundColor3", "Card")
+	local chipLabel = Create("TextLabel", {
+		AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 11, Parent = chip,
+	})
+	Paint(chipLabel, "TextColor3", "Text")
+	-- ⚙ gear to the LEFT of the chip: opens the PRESS/HOLD mode menu
+	local gear = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(0, -6, 0.5, 0),
+		Size = UDim2.new(0, 18, 0, 18), Text = "⚙", Font = Enum.Font.GothamBold, TextSize = 9,
+		AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 4, Parent = chip,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 4) }) })
+	Paint(gear, "BackgroundColor3", "Card")
+	local gearEntry = Paint(gear, "TextColor3", "SubText")
+
+	local bind
+	if opts.ExistingBind then
+		-- reuse an already-registered bind (e.g. the window toggle key)
+		bind = opts.ExistingBind
+	else
+		bind = RegisterBind(tostring(opts.Name), opts.Default, function()
+			Fire(opts.Callback, bind and bind.Key)
+		end)
+	end
+	bind.Refresh = function()
+		gearEntry.r = bind.Mode == "Hold" and "Accent" or "SubText"
+		Recolor(gearEntry, true)
+	end
+	bind.Update = function()
+		chipLabel.Text = bind.Key and bind.Key.Name or "None"
+		RefreshBindPanel()
+	end
+	bind.Update()
+	bind.Refresh()
+	-- optional extra trigger keys (per answer 20): Alts = { Enum.KeyCode.X, ... }
+	-- each alt fires the same callback; they show up in the keybind panel too
+	if type(opts.Alts) == "table" then
+		for i, altKey in ipairs(opts.Alts) do
+			local altBind = RegisterBind(tostring(opts.Name) .. " (alt " .. i .. ")", altKey, function()
+				Fire(opts.Callback, altKey)
+			end)
+			altBind.Mode = bind.Mode
+		end
+	end
+	gear.MouseButton1Click:Connect(function()
+		ShowBindModeMenu(gear, bind)
+	end)
+	chip.MouseButton1Click:Connect(function()
+		capturing = bind
+		chipLabel.Text = "..."
+	end)
+	-- persist the mode next to the keybind's flag so configs remember it
+	if opts.Flag then
+		bind.ModeFlag = opts.Flag .. ".mode"
+		RegisterFlag(bind.ModeFlag, "Press", function(v) SetBindMode(bind, v) end, "BindMode")
+	end
+
+	local Keybind = {}
+	function Keybind:Set(key)
+		bind.Key = key
+		bind.Update()
+		RefreshBindPanel()
+	end
+	function Keybind:Get() return bind.Key end
+	RegisterFlag(opts.Flag, opts.Default, function(v) Keybind:Set(v) end, "Keybind")
+	RefreshBindPanel()
+	return Keybind
+end
+
+--▶ TEXTBOX --------------------------------------------------------
+local function BuildTextbox(section, opts)
+	local row = MakeRow(section._holder, 38, opts.Name)
+	MakeNameLabel(row, opts.Name).Size = UDim2.new(0.45, -12, 1, 0)
+	AttachTooltip(row, opts.Description)
+	local box = Create("TextBox", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0),
+		Size = UDim2.new(0.52, 0, 0, 24), BorderSizePixel = 0,
+		Font = Enum.Font.GothamMedium, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+		PlaceholderText = opts.Placeholder or "Type here...", Text = opts.Default or "",
+		ClearTextOnFocus = false, Parent = row,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 6) }),
+		Create("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }),
+	})
+	Paint(box, "BackgroundColor3", "Card")
+	Paint(box, "TextColor3", "Text")
+	Paint(box, "PlaceholderColor3", "SubText")
+	box.FocusLost:Connect(function(enter)
+		if opts.Flag then Crystalized.Flags[opts.Flag] = box.Text end
+		if enter then Fire(opts.Callback, box.Text) end
+	end)
+	local Textbox = {}
+	function Textbox:Set(text) box.Text = text end
+	function Textbox:Get() return box.Text end
+	RegisterFlag(opts.Flag, box.Text, function(v) Textbox:Set(v) end, "Textbox")
+	return Textbox
+end
+
+--▶ INFO BOX (named hint card, add it anywhere above anything, any color) --
+-- CreateInfoBox({ Name="Notice", Text="...", Color="Green"|"Red"|"White"|"Gold"|accent/hex/Color3 })
+local function BuildInfoBox(section, opts)
+	local col = ResolveColor(opts.Color) or Color3.new(1, 1, 1)
+	local box = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0, BackgroundColor3 = col, BackgroundTransparency = 0.88,
+		Parent = section._holder,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 7) }),
+		Create("UIStroke", { Thickness = 1, Transparency = 0.7, Color = col }),
+	})
+	-- colored spine on the left (kept out of the inner layout)
+	local spine = Create("Frame", {
+		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 4, 0.5, 0),
+		Size = UDim2.new(0, 3, 1, -16), BackgroundColor3 = col,
+		BorderSizePixel = 0, Parent = box,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	local content = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1, Parent = box,
+	}, {
+		Create("UIPadding", {
+			PaddingTop = UDim.new(0, 7), PaddingBottom = UDim.new(0, 7),
+			PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 10),
+		}),
+		Create("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	local title = Create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1, LayoutOrder = 1,
+		Font = Enum.Font.GothamSemibold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = col, Text = tostring(opts.Name or "Info"), Parent = content,
+	})
+	local body
+	if opts.Text and opts.Text ~= "" then
+		body = Create("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1, LayoutOrder = 2, TextWrapped = true,
+			Font = Enum.Font.GothamMedium, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
+			Text = tostring(opts.Text), Parent = content,
+		})
+		Paint(body, "TextColor3", "SubText")
+	end
+	local Info = {}
+	function Info:SetText(t) if body then body.Text = tostring(t) end end
+	function Info:SetName(n) title.Text = tostring(n) end
+	return Info
+end
+
+--▶ DISCORD CARD (invite box: title, blurb, live-ish stats, copy button) --
+local function BuildDiscordCard(section, opts)
+	opts = opts or {}
+	local invite = tostring(opts.Invite or Crystalized.DiscordInvite)
+	local card = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0, Parent = section._holder,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 8) }),
+		Create("UIStroke", { Thickness = 1, Transparency = 0.55 }),
+		Create("UIPadding", {
+			PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
+			PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 12),
+		}),
+		Create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+	Paint(card, "BackgroundColor3", "Card")
+	card.UIStroke.Color = Color3.fromRGB(88, 101, 242)
+
+	local head = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 22), BackgroundTransparency = 1, LayoutOrder = 1, Parent = card,
+	})
+	local iconUri = ResolveIcon(opts.Icon) or Crystalized.Icons["message-circle"]
+	local icon = Create("ImageLabel", {
+		Size = UDim2.new(0, 16, 0, 16), Position = UDim2.new(0, 2, 0, 3),
+		BackgroundTransparency = 1, Image = iconUri, ScaleType = Enum.ScaleType.Fit,
+		ImageColor3 = Color3.fromRGB(88, 101, 242), Parent = head,
+	})
+	local nameLbl = Create("TextLabel", {
+		Position = UDim2.new(0, 26, 0, 0), Size = UDim2.new(1, -26, 1, 0),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left, Text = tostring(opts.Name or "Join the Discord"),
+		Parent = head,
+	})
+	Paint(nameLbl, "TextColor3", "Text")
+
+	if opts.Description and opts.Description ~= "" then
+		local desc = Create("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1, LayoutOrder = 2, TextWrapped = true,
+			Font = Enum.Font.GothamMedium, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
+			Text = tostring(opts.Description), Parent = card,
+		})
+		Paint(desc, "TextColor3", "SubText")
+	end
+
+	local stats = tostring(opts.Stats or ((opts.Online and ("● " .. opts.Online .. " online    ") or "")
+		.. (opts.Members and ("● " .. opts.Members .. " members") or "")))
+	if stats ~= "" then
+		local st = Create("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 13), BackgroundTransparency = 1, LayoutOrder = 3,
+			Font = Enum.Font.GothamMedium, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left,
+			Text = stats, Parent = card,
+		})
+		Paint(st, "TextColor3", "SubText")
+	end
+
+	-- invite as its own monospace chip line, then a compact copy button
+	local invLbl = Create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 13), BackgroundTransparency = 1, LayoutOrder = 4,
+		Font = Enum.Font.Code, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
+		TextColor3 = Color3.fromRGB(139, 147, 248), Text = invite, Parent = card,
+	})
+	local copy = Create("TextButton", {
+		Size = UDim2.new(1, 0, 0, 24), BorderSizePixel = 0, LayoutOrder = 5,
+		Font = Enum.Font.GothamSemibold, TextSize = 11, AutoButtonColor = false,
+		TextColor3 = Color3.new(1, 1, 1), Text = "Copy Invite", Parent = card,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 6) }) })
+	copy.BackgroundColor3 = Color3.fromRGB(88, 101, 242)
+	copy.MouseEnter:Connect(function()
+		TweenService:Create(copy, TweenInfo.new(0.15, Enum.EasingStyle.Quint), {
+			BackgroundColor3 = Color3.fromRGB(109, 121, 255) }):Play()
+	end)
+	copy.MouseLeave:Connect(function()
+		TweenService:Create(copy, TweenInfo.new(0.15, Enum.EasingStyle.Quint), {
+			BackgroundColor3 = Color3.fromRGB(88, 101, 242) }):Play()
+	end)
+	copy.MouseButton1Click:Connect(function()
+		copy.Text = "✓ Copied!"
+		if type(setclipboard) == "function" then
+			pcall(setclipboard, invite)
+		else
+			Crystalized:Notify({ Title = opts.Name or "Discord", Content = "Go to: " .. invite, Duration = 3 })
+		end
+		Fire(opts.OnCopy, invite)
+		task.delay(1.4, function()
+			if copy and copy.Parent then copy.Text = "Copy Invite" end
+		end)
+	end)
+	local Card = {}
+	return Card
+end
+
+--▶ COLOR PICKER (ADVANCED: SV pad + rainbow hue + hex + presets) --
+local function BuildColorPicker(section, opts)
+	local row = MakeRow(section._holder, 38, opts.Name)
+	row.ClipsDescendants = true
+	MakeNameLabel(row, opts.Name)
+	AttachTooltip(row, opts.Description)
+
+	local value = opts.Default or Color3.fromRGB(238, 71, 90)
+	local h, s, v = Color3.toHSV(value)
+	local open = false
+
+	-- hex helpers
+	local function toHex(c)
+		return string.format("#%02X%02X%02X",
+			math.floor(c.R * 255 + 0.5), math.floor(c.G * 255 + 0.5), math.floor(c.B * 255 + 0.5))
+	end
+	local function fromHex(str)
+		str = tostring(str):gsub("#", ""):gsub("%s", "")
+		if #str ~= 6 then return nil end
+		local r = tonumber(str:sub(1, 2), 16)
+		local g = tonumber(str:sub(3, 4), 16)
+		local b = tonumber(str:sub(5, 6), 16)
+		if r and g and b then return Color3.fromRGB(r, g, b) end
+		return nil
+	end
+
+	-- the little preview swatch in the header (click to open the picker)
+	local swatch = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -12, 0.5, 0),
+		Size = UDim2.new(0, 34, 0, 18), Text = "", AutoButtonColor = false,
+		BorderSizePixel = 0, BackgroundColor3 = value, ZIndex = 2, Parent = row,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 5) }) })
+	local swatchStroke = Create("UIStroke", { Thickness = 1, Transparency = 0.4, Parent = swatch })
+	Paint(swatchStroke, "Color", "Stroke")
+
+	-- picker area (hidden until the swatch is pressed)
+	local picker = Create("Frame", {
+		Position = UDim2.new(0, 8, 0, 42), Size = UDim2.new(1, -16, 0, 176),
+		BackgroundTransparency = 1, Parent = row,
+	})
+	-- the big saturation/value pad -- PRESS ANYWHERE to pick
+	local sv = Create("TextButton", {
+		Size = UDim2.new(1, -26, 0, 118), Text = "", AutoButtonColor = false,
+		BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = picker,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 6) }) })
+	local svWhite = Create("Frame", {
+		Size = UDim2.new(1, 0, 1, 0), BorderSizePixel = 0,
+		BackgroundColor3 = Color3.new(1, 1, 1), Parent = sv,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 6) }),
+		Create("UIGradient", {
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+				ColorSequenceKeypoint.new(1, Color3.fromHSV(h, 1, 1)),
+			}),
+		}),
+	})
+	Create("Frame", {
+		Size = UDim2.new(1, 0, 1, 0), BorderSizePixel = 0,
+		BackgroundColor3 = Color3.new(0, 0, 0), Parent = sv,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 6) }),
+		Create("UIGradient", {
+			Rotation = 90,
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(1, 0),
+			}),
+		}),
+	})
+	local svCursor = Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.new(0, 10, 0, 10),
+		BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = sv, ZIndex = 5,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(1, 0) }),
+		Create("UIStroke", { Thickness = 2, Color = Color3.new(0, 0, 0), Transparency = 0.6 }),
+	})
+	-- the rainbow bar -- PRESS to jump the hue
+	local hue = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, 0),
+		Size = UDim2.new(0, 14, 0, 118), Text = "", AutoButtonColor = false,
+		BorderSizePixel = 0, BackgroundColor3 = Color3.new(1, 1, 1), Parent = picker,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(1, 0) }),
+		Create("UIGradient", {
+			Rotation = 90,
+			Color = ColorSequence.new({
+				ColorSequenceKeypoint.new(0, Color3.fromHSV(0, 1, 1)),
+				ColorSequenceKeypoint.new(0.17, Color3.fromHSV(0.17, 1, 1)),
+				ColorSequenceKeypoint.new(0.33, Color3.fromHSV(0.33, 1, 1)),
+				ColorSequenceKeypoint.new(0.5, Color3.fromHSV(0.5, 1, 1)),
+				ColorSequenceKeypoint.new(0.67, Color3.fromHSV(0.67, 1, 1)),
+				ColorSequenceKeypoint.new(0.83, Color3.fromHSV(0.83, 1, 1)),
+				ColorSequenceKeypoint.new(1, Color3.fromHSV(1, 1, 1)),
+			}),
+		}),
+	})
+	local hueCursor = Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.new(1, 4, 0, 4),
+		BackgroundColor3 = Color3.new(1, 1, 1), BorderSizePixel = 0, Parent = hue, ZIndex = 5,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+
+	-- bottom row 1: current color square + hex input
+	local preview = Create("Frame", {
+		Position = UDim2.new(0, 0, 0, 124), Size = UDim2.new(0, 22, 0, 22),
+		BackgroundColor3 = value, BorderSizePixel = 0, Parent = picker,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 5) }) })
+	local previewStroke = Create("UIStroke", { Thickness = 1, Transparency = 0.4, Parent = preview })
+	Paint(previewStroke, "Color", "Stroke")
+	local hexBox = Create("TextBox", {
+		Position = UDim2.new(0, 28, 0, 124), Size = UDim2.new(1, -28, 0, 22),
+		BorderSizePixel = 0, Font = Enum.Font.GothamSemibold, TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left, Text = toHex(value),
+		ClearTextOnFocus = false, Parent = picker,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 5) }),
+		Create("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }),
+	})
+	Paint(hexBox, "BackgroundColor3", "Card")
+	Paint(hexBox, "TextColor3", "Text")
+
+	-- bottom row 2: quick preset swatches (the 8 accent colors)
+	local updateColor -- forward-declared: preset-dot handlers below call it
+	local presetNames = { "Crimson", "Violet", "Azure", "Emerald", "Amber", "Rose", "Ice", "Lime" }
+	for i, name in ipairs(presetNames) do
+		local dot = Create("TextButton", {
+			Position = UDim2.new(0, (i - 1) * 19 + 1, 0, 154), Size = UDim2.new(0, 14, 0, 14),
+			BackgroundColor3 = Crystalized.Accents[name], Text = "", AutoButtonColor = false,
+			BorderSizePixel = 0, Parent = picker,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		dot.MouseButton1Click:Connect(function()
+			value = Crystalized.Accents[name]
+			h, s, v = Color3.toHSV(value)
+			updateColor(true)
+		end)
+	end
+
+	function updateColor(fireCallback)
+		value = Color3.fromHSV(h, s, v)
+		swatch.BackgroundColor3 = value
+		preview.BackgroundColor3 = value
+		svWhite.UIGradient.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, Color3.new(1, 1, 1)),
+			ColorSequenceKeypoint.new(1, Color3.fromHSV(h, 1, 1)),
+		})
+		if not hexBox:IsFocused() then hexBox.Text = toHex(value) end
+		svCursor.Position = UDim2.new(s, 0, 1 - v, 0)
+		hueCursor.Position = UDim2.new(0.5, 0, h, 0)
+		if opts.Flag then Crystalized.Flags[opts.Flag] = value end
+		if fireCallback then Fire(opts.Callback, value) end
+	end
+
+	-- drag handling for both pads
+	local function watchDrag(pad, onMove)
+		local draggingPad = false
+		pad.InputBegan:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+				draggingPad = true
+				onMove(input.Position)
+			end
+		end)
+		UserInputService.InputEnded:Connect(function(input)
+			if input.UserInputType == Enum.UserInputType.MouseButton1
+			or input.UserInputType == Enum.UserInputType.Touch then
+				draggingPad = false
+			end
+		end)
+		UserInputService.InputChanged:Connect(function(input)
+			if draggingPad and (input.UserInputType == Enum.UserInputType.MouseMovement
+			or input.UserInputType == Enum.UserInputType.Touch) then
+				onMove(input.Position)
+			end
+		end)
+	end
+
+	watchDrag(sv, function(pos)
+		s = math.clamp((pos.X - sv.AbsolutePosition.X) / sv.AbsoluteSize.X, 0, 1)
+		v = 1 - math.clamp((pos.Y - sv.AbsolutePosition.Y) / sv.AbsoluteSize.Y, 0, 1)
+		updateColor(true)
+	end)
+	watchDrag(hue, function(pos)
+		h = math.clamp((pos.Y - hue.AbsolutePosition.Y) / hue.AbsoluteSize.Y, 0, 0.999)
+		updateColor(true)
+	end)
+
+	-- type a hex code directly
+	hexBox.FocusLost:Connect(function(enter)
+		if enter then
+			local parsed = fromHex(hexBox.Text)
+			if parsed then
+				value = parsed
+				h, s, v = Color3.toHSV(parsed)
+				updateColor(true)
+			else
+				hexBox.Text = toHex(value)
+			end
+		end
+	end)
+
+	swatch.MouseButton1Click:Connect(function()
+		open = not open
+		Tween(row, 0.35, { Size = UDim2.new(1, 0, 0, open and 226 or 38) })
+	end)
+
+	local Picker = {}
+	function Picker:Set(color)
+		value = color
+		h, s, v = Color3.toHSV(color)
+		updateColor(false)
+	end
+	function Picker:Get() return value end
+	RegisterFlag(opts.Flag, value, function(c) Picker:Set(c) end, "ColorPicker")
+	updateColor(false)
+	return Picker
+end
+
+--▶ LABEL & PARAGRAPH ------------------------------------------------
+local function BuildLabel(section, text)
+	local label = Create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 12,
+		TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+		Text = tostring(text), Parent = section._holder,
+	})
+	label:SetAttribute("SearchText", string.lower(tostring(text)))
+	Paint(label, "TextColor3", "SubText")
+	local Label = {}
+	function Label:Set(t)
+		label.Text = t
+		label:SetAttribute("SearchText", string.lower(tostring(t)))
+	end
+	return Label
+end
+
+local function BuildParagraph(section, opts)
+	local frame = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1, Parent = section._holder,
+	}, { Create("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }) })
+	frame:SetAttribute("SearchText", string.lower(tostring(opts.Title or "") .. " " .. tostring(opts.Content or "")))
+	local title = Create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 15), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamSemibold, TextSize = 13, TextXAlignment = Enum.TextXAlignment.Left,
+		Text = tostring(opts.Title or ""), LayoutOrder = 1, Parent = frame,
+	})
+	Paint(title, "TextColor3", "Text")
+	local body = Create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 12,
+		TextWrapped = true, TextXAlignment = Enum.TextXAlignment.Left,
+		Text = tostring(opts.Content or ""), LayoutOrder = 2, Parent = frame,
+	})
+	Paint(body, "TextColor3", "SubText")
+	AttachTooltip(frame, opts.Description)
+	local Paragraph = {}
+	function Paragraph:Set(new)
+		title.Text = new.Title or title.Text
+		body.Text = new.Content or body.Text
+	end
+	return Paragraph
+end
+
+--============================================================--
+-- SETTINGS TAB BUILDER (theme swatches, interface options,
+-- Obsidian-style config manager)
+--============================================================--
+local function BuildSettingsTab(Window)
+	local tab = Window:CreateTab({ Name = "Settings", Icon = "settings" })
+
+	--▶ Appearance ------------
+	local appearance = tab:CreateSection({ Name = "Appearance", Side = "Left" })
+
+	-- accent swatch row (8 presets, live swap)
+	local row = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 34), BackgroundTransparency = 1, Parent = appearance._holder,
+	})
+	row:SetAttribute("SearchText", "accent theme color presets swatches")
+	local accentNames = { "Crimson", "Violet", "Azure", "Emerald", "Amber", "Rose", "Ice", "Lime" }
+	for i, name in ipairs(accentNames) do
+		local dot = Create("TextButton", {
+			Size = UDim2.new(0, 22, 0, 22), Position = UDim2.new(0, (i - 1) * 26 + 2, 0, 6),
+			BackgroundColor3 = Crystalized.Accents[name], Text = "", AutoButtonColor = false,
+			BorderSizePixel = 0, Parent = row,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		dot.MouseButton1Click:Connect(function()
+			Crystalized:SetAccent(name)
+			Crystalized:Notify({ Title = "Theme", Content = "Accent set to " .. name, Duration = 1.5 })
+		end)
+	end
+
+	appearance:CreateToggle({
+		Name = "Light Mode",
+		Description = "Swap between the Dark and Light themes",
+		Flag = "UI.LightMode",
+		Default = false,
+		Notify = false,
+		Callback = function(on) Crystalized:SetTheme(on and "Light" or "Dark") end,
+	})
+
+	appearance:CreateDropdown({
+		Name = "Theme",
+		Description = "Whole-UI palette swap — four new dark variants included",
+		Flag = "UI.Theme", Default = "Dark",
+		Options = { "Dark", "Midnight", "Crimson Dusk", "Forest", "Aurora", "Light" },
+		Notify = false,
+		Callback = function(name) Crystalized:SetTheme(name) end,
+	})
+
+	appearance:CreateToggle({
+		Name = "Watermark",
+		Description = "Show the fps/ping watermark (top right)",
+		Flag = "UI.Watermark",
+		Default = true,
+		Notify = false,
+		Callback = function(on) Watermark.Visible = on end,
+	})
+
+	appearance:CreateToggle({
+		Name = "Keybind List",
+		Description = "Show every bound key (top left)",
+		Flag = "UI.KeybindPanel",
+		Default = false,
+		Notify = false,
+		Callback = function(on) BindPanel.Visible = on end,
+	})
+
+	appearance:CreateSlider({
+		Name = "UI Scale",
+		Description = "Resize the whole window (helpful on small screens)",
+		Flag = "UI.Scale",
+		Min = 75, Max = 115, Default = math.floor((Window._baseScale or 1) * 100 + 0.5), Decimals = 0, Suffix = "%",
+		Notify = false,
+		Callback = function(v)
+			local main = Window._main
+			if main then
+				local s = main:FindFirstChildWhichIsA("UIScale") or Create("UIScale", { Parent = main })
+				s.Scale = v / 100
+				Window._baseScale = v / 100
+			end
+		end,
+	})
+
+	appearance:CreateSlider({
+		Name = "UI Transparency",
+		Description = "Extra see-through on every panel (0 = solid, 60 = very glassy)",
+		Flag = "UI.Transparency",
+		Min = 0, Max = 60, Default = 0, Decimals = 0, Suffix = "%",
+		Notify = false,
+		Callback = function(v) Crystalized:SetTransparency(v) end,
+	})
+
+	appearance:CreateDropdown({
+		Name = "Font",
+		Description = "Swap the whole hub's typeface (FredokaOne = blocky Minecraft vibe)",
+		Flag = "UI.Font", Default = "Gotham",
+		Options = { "Gotham", "Arial", "Code", "FredokaOne", "Bangers" },
+		Notify = false,
+		Callback = function(f) Crystalized:SetFont(f) end,
+	})
+
+	appearance:CreateTextbox({
+		Name = "Background Image",
+		Description = "Roblox asset id (123456 or rbxassetid://123456); clear to remove",
+		Flag = "UI.BackgroundImage",
+		Placeholder = "rbxassetid://123456789",
+		Notify = false,
+		Callback = function(v) Crystalized:SetBackgroundImage(v) end,
+	})
+
+	--▶ Window ------------
+	local win = tab:CreateSection({ Name = "Window", Side = "Left" })
+
+	-- edits the SAME bind the window uses, so RightShift never double-fires
+	win:CreateKeybind({
+		Name = "Toggle UI",
+		Description = "Opens/closes the hub window",
+		Flag = "UI.ToggleKey",
+		ExistingBind = Window._toggleBind,
+	})
+
+	win:CreateButton({
+		Name = "Hide UI",
+		Description = "Fades to the top pill (click it to reopen)",
+		Callback = function() Window:Toggle() end,
+	})
+
+	win:CreateButton({
+		Name = "Unload UI",
+		Description = "Completely destroys the interface",
+		Callback = function() Crystalized:Unload() end,
+	})
+
+	--▶ Configuration (Obsidian style) ------------
+	local cfg = tab:CreateSection({ Name = "Configuration", Side = "Right" })
+
+	local configDrop = cfg:CreateDropdown({
+		Name = "Configs",
+		Description = "Every saved config in your folder",
+		Flag = "UI.SelectedConfig",
+		Options = Crystalized:ListConfigs(),
+		Callback = function() end,
+	})
+
+	cfg:CreateTextbox({
+		Name = "Config name",
+		Flag = "UI.ConfigName",
+		Placeholder = "e.g. main",
+		Callback = function() end,
+	})
+
+	cfg:CreateButton({
+		Name = "Save config",
+		Description = "Writes flags + theme to a file",
+		Callback = function()
+			Crystalized:SaveConfig(Crystalized.Flags["UI.ConfigName"] or "main")
+			configDrop:Refresh(Crystalized:ListConfigs())
+		end,
+	})
+
+	cfg:CreateButton({
+		Name = "Load selected",
+		Description = "Applies the config picked in the dropdown",
+		Callback = function()
+			local name = Crystalized.Flags["UI.SelectedConfig"]
+			if name then Crystalized:LoadConfig(name) end
+		end,
+	})
+
+	cfg:CreateButton({
+		Name = "Copy config code",
+		Description = "Exports the selected config as a shareable code (clipboard)",
+		Callback = function()
+			local name = Crystalized.Flags["UI.SelectedConfig"]
+			or Crystalized.Flags["UI.ConfigName"] or "main"
+			local code = Crystalized:ExportConfigCode(name)
+			if code then configDrop:Refresh(Crystalized:ListConfigs()) end
+		end,
+	})
+
+	cfg:CreateTextbox({
+		Name = "Import code",
+		Description = "Paste a CRYS1-... code and hit Enter — it saves as \"imported\"",
+		Placeholder = "CRYS1-…",
+		Flag = "UI.ImportCode",
+		Callback = function(value)
+			value = tostring(value or "")
+			if string.sub(value, 1, 6) ~= "CRYS1-" then
+				if #value > 0 then
+					Crystalized:Notify({ Title = "Config", Type = "warn",
+						Content = "Code should start with CRYS1-", Duration = 3 })
+				end
+				return
+			end
+			if Crystalized:ImportConfigCode(value, "imported") then
+				configDrop:Refresh(Crystalized:ListConfigs())
+				configDrop:Set("imported")
+			end
+		end,
+	})
+
+	cfg:CreateButton({
+		Name = "Delete selected",
+		Callback = function()
+			local name = Crystalized.Flags["UI.SelectedConfig"]
+			if name then
+				Crystalized:DeleteConfig(name)
+				configDrop:Refresh(Crystalized:ListConfigs())
+				Crystalized:Notify({ Title = "Config", Content = "Deleted \"" .. name .. "\"", Duration = 2 })
+			end
+		end,
+	})
+
+	cfg:CreateToggle({
+		Name = "Autoload",
+		Description = "Load the selected config every time the script runs",
+		Flag = "UI.Autoload",
+		Default = false,
+		Notify = false,
+		Callback = function(on)
+			if on then
+				Crystalized:SetAutoload(Crystalized.Flags["UI.SelectedConfig"] or "main")
+				Crystalized:Notify({ Title = "Config", Content = "Autoload set", Duration = 2 })
+			end
+		end,
+	})
+
+	local about = tab:CreateSection({ Name = "Diagnostics", Side = "Right" })
+	about:CreateToggle({
+		Name = "Debug profiler",
+		Description = "Times every element callback — anything over 16ms gets warn()ed",
+		Flag = "UI.Debug",
+		Notify = false,
+		Callback = function(on) Crystalized.Debug = on end,
+	})
+	about:CreateButton({
+		Name = "Profiler report",
+		Description = "Samples so far: count, average, worst — printed + toasted",
+		Callback = function() Crystalized:DebugReport() end,
+	})
+
+	return tab
+end
+
+--============================================================--
+-- CREATE WINDOW (the main event)
+--============================================================--
+function Crystalized:CreateWindow(options)
+	options = options or {}
+	local windowName  = options.Name or "Crystalized"
+	local tagline     = options.Tagline or ".gg/crystalized"
+	local toggleKey   = options.ToggleKey or Enum.KeyCode.RightShift
+	local startAccent = options.Accent or "Crimson"
+
+	-- desktop auto-fit: pick a comfortable starting scale on first launch.
+	-- skipped entirely when the script passes an explicit UIScale.
+	local startScale
+	if type(options.UIScale) == "number" then
+		startScale = math.clamp(options.UIScale, 0.75, 1.15)
+	elseif HAS_KEYBOARD then
+		local cam = workspace.CurrentCamera
+		local vpy = cam and cam.ViewportSize.Y or 1080
+		if vpy >= 950 then startScale = 1.0
+		elseif vpy >= 800 then startScale = 1.05
+		else startScale = 1.12 end
+	else
+		startScale = 1.0 -- mobile keeps 1.0; the UI Scale slider covers small tablets
+	end
+
+	-- apply accent/theme choices up front
+	if startAccent then self:SetAccent(startAccent) end
+	if options.Theme then self:SetTheme(options.Theme) end
+
+	-- saved premium key still valid? stay unlocked this session
+	if not self.IsPremium then
+		local savedKey
+		if type(readfile) == "function" and type(isfile) == "function" then
+			if FileSafe(isfile, CONFIG_FOLDER .. "/premium.txt") then
+				savedKey = FileSafe(readfile, CONFIG_FOLDER .. "/premium.txt")
+			end
+		else
+			savedKey = memoryConfigs.__premium
+		end
+		if savedKey and self:IsKeyValid(savedKey) then self.IsPremium = true end
+	end
+	-- if loaded with premium, the hub starts in gold (per user request)
+	if self.IsPremium and self.PremiumGold ~= false then
+		self:SetAccent("Gold")
+	end
+	self._main = false   -- set to the root frame below (used by UI Scale)
+
+	local Window = { ToggleKey = toggleKey }
+	self._currentWindow = Window
+	Window._visible = false
+	Window._tabs = {}
+	Window._baseScale = startScale
+
+	-------------------- Main frame --------------------
+	-- premium shadows (per answer 25): soft 9-slice drop shadow hugging the window,
+	-- sized with padding so the blur halo reads past the rounded corners
+	local mainShadow = Create("ImageLabel", {
+		Name = "CrystalizedShadow", Visible = false, AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 4), Size = UDim2.new(0, 580 + 90, 0, 420 + 90),
+		BackgroundTransparency = 1, ZIndex = 0,
+		Image = "rbxassetid://5028857084", ScaleType = Enum.ScaleType.Slice,
+		SliceCenter = Rect.new(24, 24, 276, 276), ImageColor3 = Color3.new(0, 0, 0),
+		ImageTransparency = 0.55, Parent = Gui,
+	})
+	mainShadow:SetAttribute("IsShadow", true)
+
+	local main = Create("Frame", {
+		Name = "CrystalizedWindow", Visible = false, AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 580, 0, 420),
+		BorderSizePixel = 0, ClipsDescendants = true, Parent = Gui,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 10) }),
+		-- glass sheen: subtle top-light gradient
+		Create("UIGradient", {
+			Rotation = 90,
+			Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.93),
+				NumberSequenceKeypoint.new(0.25, 1),
+			}),
+			Color = ColorSequence.new(Color3.new(1, 1, 1)),
+		}),
+		Create("UIScale", { Scale = startScale }),
+	})
+	Paint(main, "BackgroundColor3", "Background")
+	Window._main = main
+	main:SetAttribute("IsMainWindow", true)
+
+	-- background-art layer: created FIRST so it always sits behind every control
+	local bgHolder = Create("Frame", {
+		Name = "BGHolder", Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1,
+		BorderSizePixel = 0, ZIndex = 0, ClipsDescendants = true, Parent = main,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 10) }) })
+	Crystalized._bgHolder = bgHolder
+	if Crystalized._pendingBG then
+		task.defer(function() Crystalized:SetBackgroundImage(Crystalized._pendingBG) end)
+	end
+
+	-- accent glow border + halo behind the window
+	local stroke = Create("UIStroke", {
+		Thickness = 1, Transparency = 0.35, ApplyStrokeMode = Enum.ApplyStrokeMode.Border, Parent = main,
+	})
+	Paint(stroke, "Color", "Accent")
+	local halo = Create("Frame", {
+		Name = "Halo", AnchorPoint = Vector2.new(0.5, 0.5), ZIndex = 1,
+		Position = UDim2.new(0.5, 0, 0.5, 0), Size = UDim2.new(0, 606, 0, 446),
+		BorderSizePixel = 0, Visible = false, Parent = Gui,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 16) }) })
+	Paint(halo, "BackgroundColor3", "Accent", 0.94)
+	local function syncHalo()
+		halo.Size = UDim2.new(0, main.AbsoluteSize.X + 26, 0, main.AbsoluteSize.Y + 26)
+		halo.Position = main.Position
+	end
+	main:GetPropertyChangedSignal("Size"):Connect(syncHalo)
+	main:GetPropertyChangedSignal("Position"):Connect(syncHalo)
+
+	-------------------- Topbar --------------------
+	local topbar = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 46), BorderSizePixel = 0, Parent = main,
+	})
+	Paint(topbar, "BackgroundColor3", "Topbar")
+	local topDivider = Create("Frame", {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 0, 1), BorderSizePixel = 0, Parent = topbar,
+	})
+	Paint(topDivider, "BackgroundColor3", "Accent", 0.55) -- tinted header line: reads as brand, not template
+
+	-- top-left brand mark: a crisp lucide FEATHER by default, swappable to ANY
+	-- icon name ("skull") or rbxassetid url via CreateWindow({ Logo = "..." })
+	-- or Window:SetLogo(...) — the pill mirrors it automatically.
+	local logoImg = Create("ImageLabel", {
+		Position = UDim2.new(0, 14, 0.5, -1), AnchorPoint = Vector2.new(0, 0.5),
+		Size = UDim2.new(0, 19, 0, 19), BackgroundTransparency = 1,
+		Image = ResolveIcon(options.Logo or "feather") or Crystalized.Icons.feather,
+		ScaleType = Enum.ScaleType.Fit, Parent = topbar,
+	})
+	Paint(logoImg, "ImageColor3", "Accent")
+	function Window:SetLogo(icon)
+		local uri = ResolveIcon(icon)
+		if not uri then return end
+		logoImg.Image = uri
+		if Crystalized._pillLogo then Crystalized._pillLogo.Image = uri end
+	end
+
+	-- hub title + custom tags + a slow shine sweep (perfectly aligned)
+	local titleRow = Create("Frame", {
+		Position = UDim2.new(0, 42, 0, 5), Size = UDim2.new(1, -168, 0, 18),
+		BackgroundTransparency = 1, Parent = topbar,
+	}, {
+		Create("UIListLayout", {
+			FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 6),
+			SortOrder = Enum.SortOrder.LayoutOrder, VerticalAlignment = Enum.VerticalAlignment.Center,
+		}),
+	})
+	local nameLabel = Create("TextLabel", {
+		AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 1, 0),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamBold, TextSize = 14,
+		TextXAlignment = Enum.TextXAlignment.Left, TextYAlignment = Enum.TextYAlignment.Center,
+		Text = windowName, LayoutOrder = 1, Parent = titleRow,
+	})
+	Paint(nameLabel, "TextColor3", "Text")
+	-- the shine: a soft bright band that sweeps across the title every few seconds
+	local function makeShineColor()
+		return ColorSequence.new({
+			NumberSequenceKeypoint.new(0,    Color3.new(1, 1, 1)),
+			NumberSequenceKeypoint.new(0.42, Color3.new(1, 1, 1)),
+			NumberSequenceKeypoint.new(0.5,  Lighten(Theme.Accent, 0.6)),
+			NumberSequenceKeypoint.new(0.58, Color3.new(1, 1, 1)),
+			NumberSequenceKeypoint.new(1,    Color3.new(1, 1, 1)),
+		})
+	end
+	local shine = Create("UIGradient", { Color = makeShineColor(), Parent = nameLabel })
+	table.insert(Crystalized._themeHooks, function()
+		if shine and shine.Parent then shine.Color = makeShineColor() end
+	end)
+	task.spawn(function()
+		while main and main.Parent do
+			shine.Offset = Vector2.new(-1, 0)
+			local sweep = TweenService:Create(shine, TweenInfo.new(1.6, Enum.EasingStyle.Linear), {
+				Offset = Vector2.new(1, 0) })
+			sweep:Play()
+			sweep.Completed:Wait()
+			task.wait(2.2)
+		end
+	end)
+
+	local tagLabel = Create("TextLabel", {
+		Position = UDim2.new(0, 42, 0, 24), Size = UDim2.new(0, 320, 0, 14),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 10.5,
+		TextXAlignment = Enum.TextXAlignment.Left, Text = tagline, Parent = topbar,
+	})
+	Paint(tagLabel, "TextColor3", "SubText")
+	-- minimized pill mirrors the tagline
+	if Crystalized._pillText then Crystalized._pillText.Text = tagline end
+
+	-- Custom tags (pills next to the title). Style: "Red/Green/Gold/Blue/White/Accent/Rainbow"
+	-- or pass Color = Color3. Rainbow runs an animated gradient sweep on the text.
+	local accentTags = {}
+	local function spawnTag(t)
+		t = t or {}
+		local style = tostring(t.Style or "Accent")
+		local isRainbow = (string.lower(style) == "rainbow")
+		local col = isRainbow and Color3.new(1, 1, 1) or ResolveColor(t.Color or t.Style) or Theme.Accent
+		local useAccent = (not isRainbow) and ResolveColor(t.Color or t.Style) == nil
+		local pill = Create("TextLabel", {
+			AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 0, 15),
+			BackgroundTransparency = 0.88, BorderSizePixel = 0,
+			Font = Enum.Font.GothamBold, TextSize = 9, Text = tostring(t.Name or "TAG"),
+			LayoutOrder = 10, Parent = titleRow,
+		}, {
+			Create("UICorner", { CornerRadius = UDim.new(0, 4) }),
+			Create("UIPadding", { PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5) }),
+			-- crisp integrated badge, no harsh AI border
+		})
+		pill.BackgroundColor3 = col
+		pill.TextColor3 = Lighten(col, 0.45)
+		if useAccent then table.insert(accentTags, pill) end
+		if isRainbow then
+			local rg = Create("UIGradient", {
+				Color = ColorSequence.new({
+					NumberSequenceKeypoint.new(0,     Color3.fromRGB(255, 90, 110)),
+					NumberSequenceKeypoint.new(0.25,  Color3.fromRGB(255, 199, 64)),
+					NumberSequenceKeypoint.new(0.5,   Color3.fromRGB(107, 229, 133)),
+					NumberSequenceKeypoint.new(0.75,  Color3.fromRGB(79, 163, 255)),
+					NumberSequenceKeypoint.new(1,     Color3.fromRGB(199, 120, 255)),
+				}),
+				Parent = pill,
+			})
+			task.spawn(function()
+				while pill and pill.Parent do
+					rg.Rotation = 0
+					TweenService:Create(rg, TweenInfo.new(2.2, Enum.EasingStyle.Linear), { Rotation = 360 }):Play()
+					task.wait(2.2)
+				end
+			end)
+			pill.TextColor3 = Color3.new(1, 1, 1)
+		end
+		return pill
+	end
+	function Window:AddTag(t) return spawnTag(t) end
+	for _, t in ipairs(options.Tags or {}) do spawnTag(t) end
+	table.insert(Crystalized._themeHooks, function()
+		for _, p in ipairs(accentTags) do
+			if p and p.Parent then
+				p.BackgroundColor3 = Theme.Accent
+				p.TextColor3 = Lighten(Theme.Accent, 0.45)
+				if p.UIStroke then p.UIStroke.Color = Theme.Accent end
+			end
+		end
+	end)
+
+	-- window buttons (both fade to the pill per your spec)
+	local function makeTopButton(icon, offsetX, tooltipText)
+		local btn = Create("TextButton", {
+			AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, offsetX, 0.5, 0),
+			Size = UDim2.new(0, 28, 0, 28), Text = icon, AutoButtonColor = false,
+			Font = Enum.Font.GothamBold, TextSize = 13, BorderSizePixel = 0, Parent = topbar,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, 7) }) })
+		Paint(btn, "BackgroundColor3", "Element", 1)
+		Paint(btn, "TextColor3", "SubText")
+		btn.MouseEnter:Connect(function()
+			TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quint), {
+				BackgroundColor3 = Theme.Element, BackgroundTransparency = 0, TextColor3 = Theme.Text,
+			}):Play()
+		end)
+		btn.MouseLeave:Connect(function()
+			TweenService:Create(btn, TweenInfo.new(0.15, Enum.EasingStyle.Quint), {
+				BackgroundTransparency = 1, TextColor3 = Theme.SubText,
+			}):Play()
+		end)
+		AttachTooltip(btn, tooltipText)
+		return btn
+	end
+	local closeBtn = makeTopButton("✕", -12, "Close (asks you first)")
+	local minBtn   = makeTopButton("—", -46, "Minimize -- fades to the pill")
+	local gearBtn  = makeTopButton("⚙", -80, "Quick settings")
+	minBtn.MouseButton1Click:Connect(function() Window:Toggle() end)
+	closeBtn.MouseButton1Click:Connect(ShowCloseConfirm)
+
+	-- shadow follows the window exactly (drag, resize, scale, visibility)
+	RunService.Heartbeat:Connect(function()
+		if not mainShadow.Parent then return end
+		local s = main.UIScale and main.UIScale.Scale or 1
+		mainShadow.Visible = main.Visible
+		if not main.Visible then return end
+		mainShadow.Position = UDim2.new(main.Position.X.Scale, main.Position.X.Offset,
+			main.Position.Y.Scale, main.Position.Y.Offset + 4)
+		mainShadow.Size = UDim2.new(0, (main.Size.X.Offset + 90) * s, 0, (main.Size.Y.Offset + 90) * s)
+	end)
+
+	MakeDraggable(topbar, main)
+
+	-------------------- Resize grip (drag bottom-right corner to resize the hub) --------------------
+	local gripHit = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -4, 1, -4),
+		Size = UDim2.new(0, 20, 0, 20), BackgroundTransparency = 1, Text = "",
+		AutoButtonColor = false, ZIndex = 60, Parent = main,
+	})
+	local gripLines = {}
+	for i, cfg in ipairs({ { cx = 9,  len = 12 }, { cx = 13, len = 6 } }) do
+		local line = Create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0, cfg.cx, 0, cfg.cx),
+			Size = UDim2.new(0, cfg.len, 0, 2), Rotation = 45, BorderSizePixel = 0,
+			BackgroundTransparency = 0.45, Parent = gripHit,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		Paint(line, "BackgroundColor3", "SubText")
+		gripLines[i] = line
+	end
+	local resizing, dragStart, sizeStart
+	gripHit.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			resizing  = true
+			-- re-anchor to the top-left so the corner you grabbed actually follows the cursor
+			local ap = main.AbsolutePosition
+			main.AnchorPoint = Vector2.new(0, 0)
+			main.Position = UDim2.fromOffset(ap.X, ap.Y)
+			dragStart = input.Position
+			local sc = (main:FindFirstChildWhichIsA("UIScale") or {}).Scale or 1
+			sizeStart = main.AbsoluteSize / sc
+		end
+		input.Changed:Connect(function()
+			if input.UserInputState == Enum.UserInputState.End then resizing = false end
+		end)
+	end)
+	gripHit.MouseEnter:Connect(function()
+		for _, l in ipairs(gripLines) do
+			Tween(l, 0.15, { BackgroundTransparency = 0 })
+			l.BackgroundColor3 = Colors.Accent
+		end
+	end)
+	gripHit.MouseLeave:Connect(function()
+		for _, l in ipairs(gripLines) do
+			Tween(l, 0.15, { BackgroundTransparency = 0.45 })
+			Paint(l, "BackgroundColor3", "SubText")
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if not resizing or main.Parent == nil then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement
+		and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		local cam = workspace.CurrentCamera
+		local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+		local sc = (main:FindFirstChildWhichIsA("UIScale") or {}).Scale or 1
+		local delta = (input.Position - dragStart) / sc
+		local w = math.clamp(sizeStart.X + delta.X, 520, vp.X - 40)
+		local h = math.clamp(sizeStart.Y + delta.Y, 340, vp.Y - 60)
+		main.Size = UDim2.fromOffset(w, h)
+	end)
+
+	-------------------- Sidebar --------------------
+	local sidebar = Create("Frame", {
+		Position = UDim2.new(0, 0, 0, 46), Size = UDim2.new(0, 150, 1, -46),
+		BorderSizePixel = 0, Parent = main,
+	})
+	Paint(sidebar, "BackgroundColor3", "Sidebar")
+	local sideDivider = Create("Frame", {
+		Position = UDim2.new(1, 0, 0, 0), Size = UDim2.new(0, 1, 1, 0),
+		BorderSizePixel = 0, Parent = sidebar,
+	})
+	Paint(sideDivider, "BackgroundColor3", "Stroke")
+
+	-- search box
+	local searchBox = Create("TextBox", {
+		Position = UDim2.new(0, 10, 0, 10), Size = UDim2.new(1, -20, 0, 26),
+		BorderSizePixel = 0, Font = Enum.Font.GothamMedium, TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left, PlaceholderText = "Search...",
+		Text = "", ClearTextOnFocus = false, Parent = sidebar,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 6) }),
+		Create("UIPadding", { PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8) }),
+	})
+	Paint(searchBox, "BackgroundColor3", "Element")
+	Paint(searchBox, "TextColor3", "Text")
+	Paint(searchBox, "PlaceholderColor3", "SubText")
+
+	local tabHolder = Create("Frame", {
+		Position = UDim2.new(0, 10, 0, 44),
+		Size = UDim2.new(1, -20, 1, (options.Footer == false) and -54 or -114),
+		BackgroundTransparency = 1, Parent = sidebar,
+	}, {
+		Create("UIListLayout", { Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder }),
+	})
+
+	-- avatar chip (hidden when Footer = false)
+	local chip = Create("Frame", {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 10, 1, -10),
+		Size = UDim2.new(1, -20, 0, 46), BorderSizePixel = 0,
+		Visible = options.Footer ~= false, Parent = sidebar,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 7) }) })
+	Paint(chip, "BackgroundColor3", "Element")
+	local avatarFrame = Create("Frame", {
+		Position = UDim2.new(0, 8, 0.5, -14), Size = UDim2.new(0, 28, 0, 28),
+		BorderSizePixel = 0, Parent = chip,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	Paint(avatarFrame, "BackgroundColor3", "Card")
+	local avatarImg = Create("ImageLabel", {
+		Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Parent = avatarFrame,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	task.spawn(function()
+		local ok, thumb = pcall(function()
+			return Players:GetUserThumbnailAsync(LocalPlayer.UserId, Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size48x48)
+		end)
+		if ok then avatarImg.Image = thumb end
+	end)
+	local chipName = Create("TextLabel", {
+		Position = UDim2.new(0, 42, 0, 7), Size = UDim2.new(1, -48, 0, 15),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 12,
+		TextXAlignment = Enum.TextXAlignment.Left, TextTruncate = Enum.TextTruncate.AtEnd,
+		Text = LocalPlayer.DisplayName, Parent = chip,
+	})
+	Paint(chipName, "TextColor3", "Text")
+	local chipUser = Create("TextLabel", {
+		Position = UDim2.new(0, 42, 0, 22), Size = UDim2.new(1, -48, 0, 13),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 10,
+		TextXAlignment = Enum.TextXAlignment.Left, Text = "@" .. LocalPlayer.Name, Parent = chip,
+	})
+	Paint(chipUser, "TextColor3", "SubText")
+
+	-------------------- Pages area --------------------
+	-- (the bottom status strip was removed per request — the tagline lives up top,
+	--   so the hub now uses the full height for content)
+	local pages = Create("Frame", {
+		Position = UDim2.new(0, 151, 0, 46), Size = UDim2.new(1, -151, 1, -46),
+		BackgroundTransparency = 1, Parent = main,
+	})
+
+	-------------------- Resize grip --------------------
+	local grip = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -4, 1, -4),
+		Size = UDim2.new(0, 18, 0, 18), Text = "", AutoButtonColor = false,
+		BackgroundTransparency = 1, ZIndex = 6, Parent = main,
+	}, {
+		Create("TextLabel", {
+			Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "/",
+			Rotation = 45, Font = Enum.Font.GothamMedium, TextSize = 12,
+			TextColor3 = Color3.new(1, 1, 1), TextTransparency = 0.6,
+		}),
+	})
+	AttachTooltip(grip, "Drag to resize")
+	local resizing = false
+	grip.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			resizing = true
+		end
+	end)
+	UserInputService.InputEnded:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			resizing = false
+		end
+	end)
+	UserInputService.InputChanged:Connect(function(input)
+		if resizing and (input.UserInputType == Enum.UserInputType.MouseMovement
+		or input.UserInputType == Enum.UserInputType.Touch) then
+			local screenSize = Gui.AbsoluteSize
+			local center = main.AbsolutePosition + main.AbsoluteSize / 2
+			local w = math.clamp((input.Position.X - center.X) * 2, 460, math.max(460, screenSize.X - 40))
+			local h = math.clamp((input.Position.Y - center.Y) * 2, 340, math.max(340, screenSize.Y - 40))
+			main.Size = UDim2.new(0, w, 0, h)
+		end
+	end)
+
+	-------------------- BACKGROUND FX (snow / sparkles) --------------------
+	local refreshFXRadios = nil      -- assigned once the gear menu below exists
+
+	local fxLayer = Create("Frame", {
+		Name = "BackgroundFX", Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1, ZIndex = 0, Parent = Gui,
+	})
+	local fxAlive = {}
+	local fxMode = "None"
+
+	local function setFXMode(mode)
+		fxMode = (mode == "Snow" or mode == "Sparkles") and mode or "None"
+		Crystalized.Flags["UI.BackgroundFX"] = fxMode
+		for _, f in ipairs(fxAlive) do pcall(function() f:Destroy() end) end
+		table.clear(fxAlive)
+		if refreshFXRadios then refreshFXRadios() end
+	end
+	-- part of the config system (saved/restored like any flagged dropdown)
+	Crystalized.Flags["UI.BackgroundFX"] = "None"
+	Crystalized._flagMeta["UI.BackgroundFX"] = { Type = "Dropdown", Set = function(v) setFXMode(v) end }
+
+	local function spawnParticle()
+		if #fxAlive > 70 then return end
+		local isSparkle = fxMode == "Sparkles"
+		local size = isSparkle and math.random(2, 4) or math.random(3, 6)
+		local p = Create("Frame", {
+			Size = UDim2.new(0, size, 0, size),
+			Position = UDim2.new(math.random(), 0, isSparkle and 1.04 or -0.04, 0),
+			BackgroundColor3 = isSparkle and Theme.Accent or Color3.new(1, 1, 1),
+			BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 0, Parent = fxLayer,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		table.insert(fxAlive, p)
+		local dur = isSparkle and math.random(3, 6) or math.random(5, 9)
+		local drift = math.random(-40, 40) / 100
+		local targetY = isSparkle and -0.05 or 1.05
+		-- fade in -> drift across the screen -> fade out
+		TweenService:Create(p, TweenInfo.new(0.5), { BackgroundTransparency = isSparkle and 0.25 or 0.15 }):Play()
+		TweenService:Create(p, TweenInfo.new(dur, Enum.EasingStyle.Linear),
+			{ Position = UDim2.new(math.clamp(p.Position.X.Scale + drift, 0, 1), 0, targetY, 0) }):Play()
+		if isSparkle then
+			TweenService:Create(p, TweenInfo.new(dur / 2, Enum.EasingStyle.Linear), { Rotation = 180 }):Play()
+		end
+		task.delay(dur - 0.5, function()
+			TweenService:Create(p, TweenInfo.new(0.5), { BackgroundTransparency = 1 }):Play()
+		end)
+		task.delay(dur, function()
+			for i, f in ipairs(fxAlive) do
+				if f == p then table.remove(fxAlive, i) break end
+			end
+			p:Destroy()
+		end)
+	end
+
+	task.spawn(function()
+		while Gui.Parent do
+			task.wait(0.09)
+			if fxMode ~= "None" then spawnParticle() end
+		end
+	end)
+
+	-------------------- ESP PREVIEW (docked to the right edge of the UI,
+	-- shows YOUR actual character: name / health / box / chams) --------------------
+	local espPrevOn = false
+	local dummy = Create("Frame", {
+		Name = "ESPPreview", Visible = false, Size = UDim2.new(0, 190, 0, 232),
+		BorderSizePixel = 0, ZIndex = 15, Parent = Gui,
+	}, { Create("UICorner", { CornerRadius = UDim.new(0, 8) }) })
+	Paint(dummy, "BackgroundColor3", "Topbar", 0.05)
+	AddShadow(dummy, 30, 0.5)
+	local dstroke = Create("UIStroke", { Thickness = 1, Transparency = 0.5, Parent = dummy })
+	Paint(dstroke, "Color", "Stroke")
+	local dtop = Create("Frame", {
+		Size = UDim2.new(1, 0, 0, 26), BackgroundTransparency = 1, Parent = dummy,
+	})
+	local dtitle = Create("TextLabel", {
+		Position = UDim2.new(0, 10, 0, 0), Size = UDim2.new(1, -40, 1, 0), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamSemibold, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "ESP Preview", Parent = dtop,
+	})
+	Paint(dtitle, "TextColor3", "SubText")
+	-- the character itself: your own full-body avatar rendered right in the panel
+	local figure = Create("ImageLabel", {
+		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -6),
+		Size = UDim2.new(0, 176, 0, 176), BackgroundTransparency = 1,
+		ScaleType = Enum.ScaleType.Fit, ZIndex = 16, Parent = dummy,
+	})
+	local function refreshAvatar()
+		task.spawn(function()
+			local ok, thumb = pcall(Players.GetUserThumbnailAsync, Players,
+				LocalPlayer.UserId, Enum.ThumbnailType.AvatarBust, Enum.ThumbnailSize.Size352x352)
+			if not ok then
+				ok, thumb = pcall(Players.GetUserThumbnailAsync, Players,
+					LocalPlayer.UserId, Enum.ThumbnailType.FullBody, Enum.ThumbnailSize.Size352x352)
+			end
+			if ok then figure.Image = thumb end
+		end)
+	end
+	refreshAvatar()
+	-- ESP overlays (box / name / distance / health bar) -- drawn over the figure
+	local espBox = Create("Frame", {
+		AnchorPoint = Vector2.new(0.5, 1), Position = UDim2.new(0.5, 0, 1, -5),
+		Size = UDim2.new(0, 104, 0, 192), BackgroundTransparency = 1,
+		Visible = false, ZIndex = 17, Parent = dummy,
+	}, { Create("UIStroke", { Thickness = 1.5, Color = Theme.Accent }) })
+	local displayName = (LocalPlayer.DisplayName ~= "" and LocalPlayer.DisplayName) or LocalPlayer.Name
+	local espName = Create("TextLabel", {
+		Position = UDim2.new(0.5, -45, 0, 27), Size = UDim2.new(0, 90, 0, 13),
+		BackgroundTransparency = 1,
+		Font = Enum.Font.GothamSemibold, TextSize = 11, Text = displayName,
+		Visible = false, ZIndex = 17, Parent = dummy,
+	})
+	local espDist = Create("TextLabel", {
+		Position = UDim2.new(0.5, -45, 0, 40), Size = UDim2.new(0, 90, 0, 12),
+		BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 10,
+		Text = "0m", Visible = false, ZIndex = 17, Parent = dummy,
+	})
+	local hpTrack = Create("Frame", {
+		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(0.5, -59, 1, -5),
+		Size = UDim2.new(0, 4, 0, 192), BackgroundColor3 = Color3.new(0, 0, 0),
+		BackgroundTransparency = 0.4, BorderSizePixel = 0, Visible = false,
+		ZIndex = 17, Parent = dummy,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+	local hpFill = Create("Frame", {
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 0, 1, 0),
+		Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(74, 222, 128),
+		BorderSizePixel = 0, ZIndex = 18, Parent = hpTrack,
+	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+
+	-- YOUR real health, straight from your character
+	local function liveHumanoid()
+		local char = LocalPlayer.Character
+		return char and char:FindFirstChildOfClass("Humanoid")
+	end
+	LocalPlayer.CharacterAdded:Connect(function()
+		task.wait(0.5)
+		refreshAvatar()
+	end)
+
+	-- docked to the main window's RIGHT edge, follows when you drag the hub
+	RunService.RenderStepped:Connect(function()
+		if not dummy.Visible then return end
+		local ap, sz = main.AbsolutePosition, main.AbsoluteSize
+		dummy.Position = UDim2.fromOffset(ap.X + sz.X + 12, ap.Y + 46)
+	end)
+
+	-- live sync: reads the SAME flags your real ESP uses
+	local dummyAccum = 0
+	RunService.Heartbeat:Connect(function(dt)
+		dummyAccum = dummyAccum + dt
+		if dummyAccum < 0.15 then return end
+		dummyAccum = 0
+		if not dummy.Visible then return end
+		local f = Crystalized.DummyFlags
+		local espOn  = Crystalized.Flags[f.ESP] == true
+		local chams  = Crystalized.Flags[f.Chams] == true
+		local col    = Crystalized.Flags[f.Color]
+		if typeof(col) ~= "Color3" then col = Theme.Accent end
+		espBox.Visible   = espOn
+		espName.Visible  = espOn
+		espDist.Visible  = espOn
+		hpTrack.Visible  = espOn
+		espBox.UIStroke.Color = col
+		espName.TextColor3 = col
+		espDist.TextColor3 = col
+		figure.ImageColor3 = chams and col or Color3.new(1, 1, 1)
+		-- your actual health (falls back to full if the character is missing)
+		local hum = liveHumanoid()
+		local pct = hum and math.clamp(hum.Health / math.max(hum.MaxHealth, 1), 0, 1) or 1
+		hpFill.Size = UDim2.new(1, 0, pct, 0)
+		hpFill.BackgroundColor3 = (pct > 0.5) and Color3.fromRGB(74, 222, 128)
+			or Color3.fromRGB(240, 90, 100)
+		espDist.Text = "0m" -- it's literally you standing next to yourself
+	end)
+
+	-- visibility gate: the gear toggle asks, the window decides (hides with the hub)
+	local function syncEspPreview()
+		dummy.Visible = espPrevOn and Window._visible ~= false
+	end
+	Window._setEspPreview = function(on) espPrevOn = on syncEspPreview() end
+	Window._syncEspPreview = syncEspPreview
+
+	-------------------- GEAR MENU (quick settings popover) --------------------
+	local gearMenu = Create("Frame", {
+		Visible = false, AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -10, 0, 50),
+		Size = UDim2.new(0, 176, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+		BorderSizePixel = 0, ZIndex = 40, Parent = main,
+	}, {
+		Create("UICorner", { CornerRadius = UDim.new(0, 8) }),
+		Create("UIPadding", {
+			PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8),
+			PaddingLeft = UDim.new(0, 8), PaddingRight = UDim.new(0, 8),
+		}),
+		Create("UIListLayout", { Padding = UDim.new(0, 3), SortOrder = Enum.SortOrder.LayoutOrder }),
+		Create("UIScale", { Scale = 1 }),
+	})
+	Paint(gearMenu, "BackgroundColor3", "Topbar", 0.03)
+	local gmStroke = Create("UIStroke", { Thickness = 1, Transparency = 0.35, Parent = gearMenu })
+	Paint(gmStroke, "Color", "Accent")
+
+	local dotEntries = {}   -- [instance] = "role when active"
+	local function menuRow(text, withDot, order)
+		local r = Create("TextButton", {
+			Size = UDim2.new(1, 0, 0, 28), Text = "", AutoButtonColor = false,
+			BorderSizePixel = 0, ZIndex = 41, LayoutOrder = order, Parent = gearMenu,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, 5) }) })
+		Paint(r, "BackgroundColor3", "Element")
+		Hoverify(r, "Element")
+		local lbl = Create("TextLabel", {
+			Position = UDim2.new(0, 10, 0, 0), Size = UDim2.new(1, -36, 1, 0),
+			BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 12,
+			TextXAlignment = Enum.TextXAlignment.Left, Text = text, ZIndex = 42, Parent = r,
+		})
+		Paint(lbl, "TextColor3", "Text")
+		local dot
+		if withDot then
+			dot = Create("Frame", {
+				AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -10, 0.5, 0),
+				Size = UDim2.new(0, 10, 0, 10), BorderSizePixel = 0, ZIndex = 42, Parent = r,
+			}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+			Paint(dot, "BackgroundColor3", "ToggleOff")
+		end
+		return r, dot
+	end
+
+	local dummyBtn, dummyDot = menuRow("ESP Preview", true, 1)
+	local fxLabel = Create("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1, LayoutOrder = 2,
+		Font = Enum.Font.GothamSemibold, TextSize = 9, TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "  BACKGROUND FX", Parent = gearMenu,
+	})
+	Paint(fxLabel, "TextColor3", "SubText")
+	local noneRow,  noneDot  = menuRow("None",     true, 3)
+	local snowRow,  snowDot  = menuRow("Snow",     true, 4)
+	local sparkRow, sparkDot = menuRow("Sparkles", true, 5)
+
+	local fxDots = { None = noneDot, Snow = snowDot, Sparkles = sparkDot }
+	refreshFXRadios = function()
+		for name, dot in pairs(fxDots) do
+			dot.BackgroundColor3 = (name == fxMode) and Theme.Accent or Theme.ToggleOff
+		end
+	end
+	local function refreshDummyDot()
+		dummyDot.BackgroundColor3 = dummy.Visible and Theme.Accent or Theme.ToggleOff
+	end
+	table.insert(Crystalized._themeHooks, function()
+		if refreshFXRadios then refreshFXRadios() end
+		refreshDummyDot()
+	end)
+	refreshFXRadios()
+
+	noneRow.MouseButton1Click:Connect(function()  setFXMode("None") end)
+	snowRow.MouseButton1Click:Connect(function()  setFXMode("Snow") end)
+	sparkRow.MouseButton1Click:Connect(function() setFXMode("Sparkles") end)
+	dummyBtn.MouseButton1Click:Connect(function()
+		Window._setEspPreview(not dummy.Visible)
+		refreshDummyDot()
+	end)
+
+	gearBtn.MouseButton1Click:Connect(function()
+		gearMenu.Visible = not gearMenu.Visible
+		if gearMenu.Visible then
+			gearMenu.UIScale.Scale = 0.8
+			Tween(gearMenu.UIScale, 0.35, { Scale = 1 })
+		end
+	end)
+	-- click anywhere outside the popover closes it
+	UserInputService.InputBegan:Connect(function(input)
+		if not gearMenu.Visible then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1
+		and input.UserInputType ~= Enum.UserInputType.Touch then return end
+		local pos = input.Position
+		local ap, sz = gearMenu.AbsolutePosition, gearMenu.AbsoluteSize
+		local bp, bs = gearBtn.AbsolutePosition, gearBtn.AbsoluteSize
+		local inMenu = pos.X >= ap.X and pos.X <= ap.X + sz.X and pos.Y >= ap.Y and pos.Y <= ap.Y + sz.Y
+		local inBtn  = pos.X >= bp.X and pos.X <= bp.X + bs.X and pos.Y >= bp.Y and pos.Y <= bp.Y + bs.Y
+		if not inMenu and not inBtn then gearMenu.Visible = false end
+	end)
+
+	local dclose = Create("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -6, 0.5, 0),
+		Size = UDim2.new(0, 18, 0, 18), Text = "✕", Font = Enum.Font.GothamBold, TextSize = 10,
+		BackgroundTransparency = 1, AutoButtonColor = false, ZIndex = 18, Parent = dtop,
+	})
+	Paint(dclose, "TextColor3", "SubText")
+	dclose.MouseButton1Click:Connect(function()
+		dummy.Visible = false
+		refreshDummyDot()
+	end)
+
+	-------------------- Visibility (fade ⇆ pill) --------------------
+	function Window:SetVisible(visible)
+		self._visible = visible
+		if self._syncEspPreview then self._syncEspPreview() end
+		if visible then
+			Pill.Visible = false
+			halo.Visible = true
+			syncHalo()
+			main.Visible = true
+			local base = self._baseScale or 1
+			main.UIScale.Scale = 0.85 * base
+			Tween(main.UIScale, 0.5, { Scale = base }, "Pop")
+			Fade(main, false, 0.3)
+			Fade(halo, false, 0.3)
+		else
+			Fade(main, true, 0.45)
+			Tween(halo, 0.45, { BackgroundTransparency = 1 }, "Snappy")
+			task.delay(0.5, function()
+				halo.Visible = false
+				halo.BackgroundTransparency = 0.94
+			end)
+			-- show + pop the pill
+			task.delay(0.2, function()
+				if Window._visible then return end
+				Pill.Visible = true
+				Fade(Pill, false, 0.3)
+				local pScale = Pill:FindFirstChildWhichIsA("UIScale") or Create("UIScale", { Parent = Pill })
+				pScale.Scale = 0.5
+				Tween(pScale, 0.5, { Scale = 1 }, "Pop")
+			end)
+		end
+	end
+
+	function Window:Toggle()
+		self:SetVisible(not self._visible)
+	end
+
+	-------------------- What's-new changelog card (optional, once per version) --------------------
+	function Window:ShowChangelog(title, lines, version)
+		local dim = Create("TextButton", {
+			Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.new(0, 0, 0),
+			BackgroundTransparency = 1, Text = "", AutoButtonColor = false, ZIndex = 150, Parent = Gui,
+		})
+		TweenService:Create(dim, TweenInfo.new(0.25, Enum.EasingStyle.Quint), { BackgroundTransparency = 0.45 }):Play()
+		local card = Create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 0),
+			Size = UDim2.new(0, 340, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+			BorderSizePixel = 0, ZIndex = 151, Parent = Gui,
+		}, {
+			Create("UICorner", { CornerRadius = UDim.new(0, 12) }),
+			Create("UIStroke", { Thickness = 1, Transparency = 0.5 }),
+			Create("UIPadding", {
+				PaddingTop = UDim.new(0, 16), PaddingBottom = UDim.new(0, 14),
+				PaddingLeft = UDim.new(0, 20), PaddingRight = UDim.new(0, 20),
+			}),
+			Create("UIListLayout", { Padding = UDim.new(0, 5), SortOrder = Enum.SortOrder.LayoutOrder }),
+			Create("UIScale", { Scale = 0.85 }),
+		})
+		Paint(card, "BackgroundColor3", "Topbar")
+		Paint(card.UIStroke, "Color", "Stroke")
+		AddShadow(card, 36, 0.5)
+		local head = Create("TextLabel", {
+			Size = UDim2.new(1, 0, 0, 20), BackgroundTransparency = 1, LayoutOrder = 1,
+			Font = Enum.Font.GothamBold, TextSize = 15, TextXAlignment = Enum.TextXAlignment.Left,
+			Text = tostring(title or ("What's new in " .. (windowName or "this update"))) .. "  ·  v" .. tostring(version or Crystalized.Version),
+			Parent = card,
+		})
+		Paint(head, "TextColor3", "Text")
+		local order = 2
+		for _, line in ipairs(lines or {}) do
+			local lcol = Color3.fromRGB(148, 148, 165)
+			local ltext = tostring(line)
+			-- lines may be { Text=..., Color=... } tables too
+			if type(line) == "table" then
+				ltext = tostring(line.Text or line[1] or "")
+				lcol = ResolveColor(line.Color) or lcol
+			end
+			local li = Create("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1, LayoutOrder = order, TextWrapped = true,
+				Font = Enum.Font.GothamMedium, TextSize = 12, TextXAlignment = Enum.TextXAlignment.Left,
+				TextColor3 = lcol, Text = "•  " .. ltext, Parent = card,
+			})
+			order = order + 1
+		end
+		local ok = Create("TextButton", {
+			Size = UDim2.new(1, 0, 0, 30), BorderSizePixel = 0, LayoutOrder = order + 1,
+			Font = Enum.Font.GothamSemibold, TextSize = 12, AutoButtonColor = false,
+			TextColor3 = Color3.new(1, 1, 1), Text = "Nice, got it", Parent = card,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, 7) }) })
+		Paint(ok, "BackgroundColor3", "Accent")
+		local function dismiss()
+			TweenService:Create(dim, TweenInfo.new(0.2, Enum.EasingStyle.Quint), { BackgroundTransparency = 1 }):Play()
+			local out = Tween(card.UIScale, 0.25, { Scale = 0.85 }, "Snappy")
+			Fade(card, true, 0.2)
+			out.Completed:Wait()
+			dim:Destroy()
+		end
+		ok.MouseButton1Click:Connect(dismiss)
+		dim.MouseButton1Click:Connect(dismiss)
+		task.defer(function() Tween(card.UIScale, 0.45, { Scale = 1 }, "Pop") end)
+	end
+	local pillPressPos = nil
+	Pill.InputBegan:Connect(function(input)
+		if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.Touch then
+			pillPressPos = Vector2.new(input.Position.X, input.Position.Y)
+		end
+	end)
+	Pill.MouseButton1Click:Connect(function()
+		if os.clock() < reopenSuppressUntil then return end   -- the ✕ was just pressed
+		if pillPressPos then
+			local m = UserInputService:GetMouseLocation()
+			if (Vector2.new(m.X, m.Y) - pillPressPos).Magnitude > 8 then return end
+		end
+		if not Window._visible then Window:SetVisible(true) end
+	end)
+	MakeDraggable(Pill, Pill)
+
+	-------------------- UI toggle keybind (single entry -- the
+	-- settings tab edits THIS bind instead of adding another) --
+	if HAS_KEYBOARD then
+		self._toggleBind = RegisterBind("Toggle UI", toggleKey, function() Window:Toggle() end)
+	end
+
+	-------------------- Tabs --------------------
+	function Window:CreateTab(opts)
+		opts = opts or {}
+		local Tab = {}
+		local order = #self._tabs + 1
+
+		local tabBtn = Create("TextButton", {
+			Size = UDim2.new(1, 0, 0, 32), Text = "", AutoButtonColor = false,
+			BorderSizePixel = 0, BackgroundTransparency = 1, LayoutOrder = order, Parent = tabHolder,
+		}, { Create("UICorner", { CornerRadius = UDim.new(0, 7) }) })
+		local tabBgEntry = Paint(tabBtn, "BackgroundColor3", "Accent", 1)
+		local indicator = Create("Frame", {
+			Position = UDim2.new(0, 0, 0.5, -8), Size = UDim2.new(0, 3, 0, 16),
+			BorderSizePixel = 0, Visible = false, Parent = tabBtn,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		Paint(indicator, "BackgroundColor3", "Accent")
+		local iconUri = ResolveIcon(opts.Icon)
+		local tabIcon, tabIconEntry
+		if iconUri then
+			-- genuine lucide image icon, tinted like the label (recolors with theme)
+			tabIcon = Create("ImageLabel", {
+				Position = UDim2.new(0, 12, 0.5, -8), Size = UDim2.new(0, 15, 0, 15),
+				BackgroundTransparency = 1, Image = iconUri,
+				ScaleType = Enum.ScaleType.Fit, Parent = tabBtn,
+			})
+			tabIconEntry = Paint(tabIcon, "ImageColor3", "SubText")
+		else
+			tabIcon = Create("TextLabel", {
+				Position = UDim2.new(0, 12, 0, 0), Size = UDim2.new(0, 16, 1, 0),
+				BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 12,
+				Text = opts.Icon or "◆", Parent = tabBtn,
+			})
+			tabIconEntry = Paint(tabIcon, "TextColor3", "SubText")
+		end
+		local tabLabel = Create("TextLabel", {
+			Position = UDim2.new(0, 34, 0, 0), Size = UDim2.new(1, -40, 1, 0),
+			BackgroundTransparency = 1, Font = Enum.Font.GothamSemibold, TextSize = 12,
+			TextXAlignment = Enum.TextXAlignment.Left, Text = opts.Name or "Tab", Parent = tabBtn,
+		})
+		local tabLabelEntry = Paint(tabLabel, "TextColor3", "SubText")
+
+		-- page = scrolling frame with a two-column container
+		local page = Create("ScrollingFrame", {
+			Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
+			ScrollBarThickness = 2, ScrollingDirection = Enum.ScrollingDirection.Y,
+			AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(0, 0, 0, 0),
+			Visible = false, Parent = pages,
+		}, { Create("UIPadding", {
+			PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 12),
+			PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 14),
+		}) })
+		Paint(page, "ScrollBarImageColor3", "Accent")
+		page.ScrollBarImageTransparency = 0.25 -- custom tinted scrollbar (per answer 26)
+		local cols = Create("Frame", {
+			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1, Parent = page,
+		}, {
+			Create("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal, Padding = UDim.new(0, 12),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+			}),
+		})
+		local function makeCol(layoutOrder)
+			return Create("Frame", {
+				Size = UDim2.new(0.5, -6, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1, LayoutOrder = layoutOrder, Parent = cols,
+			}, {
+				Create("UIListLayout", { Padding = UDim.new(0, 12), SortOrder = Enum.SortOrder.LayoutOrder }),
+			})
+		end
+		Tab._left  = makeCol(1)
+		Tab._right = makeCol(2)
+		Tab._page  = page
+		Tab._btn   = tabBtn
+
+		-- per-tab accent identity (optional): CreateTab({ Accent = "Violet" })
+		-- tints the icon/label/active-bg/indicator without touching the global accent
+		local tabAccent = ResolveColor(opts.Accent)
+		local indicatorEntry = nil
+		if tabAccent then
+			tabBgEntry.c = tabAccent
+			for _, e in ipairs(Crystalized._paints) do
+				if e.i == indicator and e.p == "BackgroundColor3" then indicatorEntry = e break end
+			end
+			if indicatorEntry then indicatorEntry.c = tabAccent Recolor(indicatorEntry, true) end
+		end
+
+		local function setActive(active)
+			tabBgEntry.a = active and 0.86 or 1
+			Recolor(tabBgEntry, false)
+			indicator.Visible = active
+			if tabAccent then
+				-- pin icon/label/indicator to this tab's color while active
+				tabIconEntry.c, tabLabelEntry.c = active and tabAccent or nil, active and tabAccent or nil
+			else
+				tabIconEntry.r  = active and "Accent" or "SubText"
+				tabLabelEntry.r = active and "Accent" or "SubText"
+			end
+			Recolor(tabIconEntry, false)
+			Recolor(tabLabelEntry, false)
+			page.Visible = active
+		end
+		Tab._setActive = setActive
+
+		-- smooth tab switch: sections cascade-fade in one after another
+		local function cascade()
+			local i = 0
+			for _, col in ipairs({ Tab._left, Tab._right }) do
+				for _, sec in ipairs(col:GetChildren()) do
+					if sec:IsA("CanvasGroup") and sec.Visible then
+						i = i + 1
+						sec.GroupTransparency = 1
+						local delay = i * 0.045
+						task.delay(delay, function()
+							if sec and sec.Parent then
+								Tween(sec, 0.3, { GroupTransparency = 0 }, "Snappy")
+							end
+						end)
+					end
+				end
+			end
+		end
+		Tab._cascade = cascade
+
+		tabBtn.MouseButton1Click:Connect(function()
+			for _, t in ipairs(self._tabs) do t._setActive(false) end
+			setActive(true)
+			page.CanvasPosition = Vector2.new(0, 0)
+			cascade()
+			if Window._flashMatches then Window._flashMatches(Tab) end
+		end)
+
+		-- auto-activate the first tab
+		if order == 1 then setActive(true) end
+
+		-- theme refresh hook (keeps active tab tinted after theme swaps)
+		table.insert(Crystalized._themeHooks, function()
+			Recolor(tabBgEntry, false)
+			Recolor(tabIconEntry, false)
+			Recolor(tabLabelEntry, false)
+		end)
+
+		-------------------- Sections --------------------
+		function Tab:CreateSection(sopts)
+			sopts = sopts or {}
+			local parentCol = (sopts.Side == "Right") and self._right or self._left
+			local sectionFrame = Create("CanvasGroup", {
+				Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+				BorderSizePixel = 0, GroupTransparency = 0, Parent = parentCol,
+			}, {
+				Create("UICorner", { CornerRadius = UDim.new(0, 8) }),
+				Create("UIPadding", {
+					PaddingTop = UDim.new(0, 10), PaddingBottom = UDim.new(0, 10),
+					PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10),
+				}),
+				Create("UIListLayout", { Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder }),
+			})
+			Paint(sectionFrame, "BackgroundColor3", "Card")
+			-- no outline on section cards: separation comes from shadow + padding
+			sectionFrame:SetAttribute("SectionName", string.lower(tostring(sopts.Name or "")))
+
+			-- customizable: HeaderSize (px), HeaderColor ("Azure"/#hex/Color3/named)
+			local title = Create("TextLabel", {
+				Size = UDim2.new(1, 0, 0, 16), BackgroundTransparency = 1, LayoutOrder = 0,
+				Font = Enum.Font.GothamBold, TextSize = sopts.HeaderSize or 12,
+				TextXAlignment = Enum.TextXAlignment.Left,
+				Text = string.upper(tostring(sopts.Name or "Section")), Parent = sectionFrame,
+			})
+			local titleEntry = Paint(title, "TextColor3", "SubText")
+			local hcol = ResolveColor(sopts.HeaderColor)
+			if hcol then titleEntry.c = hcol Recolor(titleEntry, true) end
+
+			-- collapsible sections (per answer 23): click the header or the
+			-- chevron chip to fold/unfold the section body. Session-scoped.
+			local chev = Create("TextLabel", {
+				AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -2, 0.5, 0),
+				Size = UDim2.new(0, 16, 0, 16), BackgroundTransparency = 1, ZIndex = 5,
+				Font = Enum.Font.GothamBold, TextSize = 11, Text = "▾", Parent = title,
+			})
+			Paint(chev, "TextColor3", "SubText")
+			local hit = Create("TextButton", {
+				Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, Text = "",
+				AutoButtonColor = false, ZIndex = 6, Parent = title,
+			})
+			local collapsed = false
+			local hiddenRows = {}
+			local function SetCollapsed(state)
+				collapsed = state
+				hiddenRows = {}
+				for _, child in ipairs(sectionFrame:GetChildren()) do
+					if child:IsA("GuiObject") and child ~= title and child ~= hit
+						and child ~= chev then
+						if state then
+							if child.Visible then hiddenRows[child] = true end
+							child.Visible = false
+						elseif hiddenRows[child] then
+							child.Visible = true
+						end
+					end
+				end
+				title.Text = string.upper(tostring(sopts.Name or "Section"))
+				chev.Text = state and "▸" or "▾"
+				TweenService:Create(chev, TweenInfo.new(0.2, Enum.EasingStyle.Quint), {
+					Rotation = state and -90 or 0,
+				}):Play()
+			end
+			hit.MouseButton1Click:Connect(function()
+				-- don't fight the live search filter: only collapse when not searching
+				if searchBox and string.lower(searchBox.Text) ~= "" then return end
+				SetCollapsed(not collapsed)
+			end)
+
+			local Section = { _holder = sectionFrame, SetCollapsed = SetCollapsed }
+
+			-- public element factories (Rayfield-style names)
+			function Section:CreateButton(o)      o = o or {} return BuildButton(self, o) end
+			function Section:CreateToggle(o)      o = o or {} return BuildToggle(self, o) end
+			function Section:CreateSlider(o)      o = o or {} return BuildSlider(self, o) end
+			function Section:CreateDropdown(o)    o = o or {} return BuildDropdown(self, o) end
+			function Section:CreateKeybind(o)     o = o or {} return BuildKeybind(self, o) end
+			function Section:CreateTextbox(o)     o = o or {} return BuildTextbox(self, o) end
+			function Section:CreateInfoBox(o)     o = o or {} return BuildInfoBox(self, o) end
+			function Section:CreateDiscordCard(o) o = o or {} return BuildDiscordCard(self, o) end
+			function Section:CreateColorPicker(o) o = o or {} return BuildColorPicker(self, o) end
+			function Section:CreateLabel(t)       return BuildLabel(self, t) end
+			function Section:CreateParagraph(o)   o = o or {} return BuildParagraph(self, o) end
+
+			return Section
+		end
+
+		table.insert(self._tabs, Tab)
+		return Tab
+	end
+
+	-------------------- Search --------------------
+	-------------------- Search (plain + fuzzy) --------------------
+	-- fuzzy: characters of the query must appear, in order ("kl aru" -> "kill aura")
+	local function fuzzyMatch(text, q)
+		local ti = 1
+		for qi = 1, #q do
+			local c = string.sub(q, qi, qi)
+			if c ~= " " then
+				local found = string.find(text, c, ti, true)
+				if not found then return false end
+				ti = found + 1
+			end
+		end
+		return true
+	end
+
+	local function runSearch()
+		local query = string.lower(searchBox.Text)
+		local firstHitTab = nil
+		local count = 0
+		for _, tab in ipairs(Window._tabs) do
+			for _, col in ipairs({ tab._left, tab._right }) do
+				for _, sectionFrame in ipairs(col:GetChildren()) do
+					if sectionFrame:IsA("Frame") or sectionFrame:IsA("CanvasGroup") then
+						local sectionName = sectionFrame:GetAttribute("SectionName") or ""
+						local anyVisible = false
+						for _, row in ipairs(sectionFrame:GetChildren()) do
+							local searchText = row:GetAttribute("SearchText")
+							if searchText then
+								local show = (query == "")
+									or string.find(searchText, query, 1, true) ~= nil
+									or string.find(sectionName, query, 1, true) ~= nil
+									or fuzzyMatch(searchText .. " " .. sectionName, query)
+								row.Visible = show
+								if show then
+									anyVisible = true
+									count = count + 1
+									if query ~= "" and not firstHitTab then firstHitTab = tab end
+								end
+							end
+						end
+						sectionFrame.Visible = (query == "") or anyVisible
+							or string.find(sectionName, query, 1, true) ~= nil
+					end
+				end
+			end
+		end
+		-- live result count right in the placeholder (per answer 22)
+		if query == "" then
+			searchBox.PlaceholderText = "Search settings…"
+		else
+			searchBox.PlaceholderText = count .. " match" .. (count == 1 and "" or "es")
+				.. "  —  Enter to jump"
+		end
+		Window._searchFirstHit = firstHitTab
+	end
+	searchBox:GetPropertyChangedSignal("Text"):Connect(runSearch)
+
+	-- flash-highlight the matched rows when you switch tabs mid-search
+	local function flashMatches(tab)
+		local query = string.lower(searchBox.Text)
+		if query == "" then return end
+		task.delay(0.35, function()
+			for _, col in ipairs({ tab._left, tab._right }) do
+				for _, sectionFrame in ipairs(col:GetChildren()) do
+					if (sectionFrame:IsA("Frame") or sectionFrame:IsA("CanvasGroup")) and sectionFrame.Visible then
+						for _, row in ipairs(sectionFrame:GetChildren()) do
+							local searchText = row:IsA("GuiObject") and row:GetAttribute("SearchText")
+							if searchText and row.Visible
+								and (string.find(searchText, query, 1, true) or fuzzyMatch(searchText, query)) then
+								local flash = row:FindFirstChild("SearchFlash") or Create("Frame", {
+									Name = "SearchFlash", Size = UDim2.new(1, 0, 1, 0),
+									BackgroundColor3 = Theme.Accent, BackgroundTransparency = 1,
+									BorderSizePixel = 0, ZIndex = 1, Parent = row,
+								}, { Create("UICorner", { CornerRadius = UDim.new(0, 6) }) })
+								flash.BackgroundColor3 = Theme.Accent
+								flash.BackgroundTransparency = 0.82
+								TweenService:Create(flash, TweenInfo.new(0.7, Enum.EasingStyle.Quint), {
+									BackgroundTransparency = 1,
+								}):Play()
+							end
+						end
+					end
+				end
+			end
+		end)
+	end
+	Window._flashMatches = flashMatches
+
+	-- Enter inside search jumps straight to the tab holding the first match
+	-- and pulse-highlights every matched row (per answer 22)
+	searchBox.FocusLost:Connect(function(enter)
+		if enter and searchBox.Text ~= "" and Window._searchFirstHit then
+			local tab = Window._searchFirstHit
+			if tab._btn then
+				for _, t in ipairs(Window._tabs) do t._setActive(false) end
+				tab._setActive(true)
+				tab._page.CanvasPosition = Vector2.new(0, 0)
+				if tab._cascade then tab._cascade() end
+				flashMatches(tab)
+			end
+		end
+	end)
+
+	-------------------- Auto Settings tab --------------------
+	if options.ShowSettings ~= false then
+		BuildSettingsTab(self)
+	end
+
+	-------------------- FPS / ping updater --------------------
+	local frames, elapsed = 0, 0
+	RunService.RenderStepped:Connect(function(dt)
+		frames = frames + 1
+		elapsed = elapsed + dt
+		if elapsed >= 1 then
+			local fps = math.floor(frames / elapsed + 0.5)
+			local ping = 0
+			pcall(function() ping = math.floor(LocalPlayer:GetNetworkPing() * 1000 + 0.5) end)
+			local txt = fps .. " FPS  •  " .. ping .. " ms"
+			wmStats.Text = txt
+			frames, elapsed = 0, 0
+		end
+	end)
+
+	-------------------- Splash screen --------------------
+	local function playSplash(done)
+		local splash = Create("Frame", {
+			Size = UDim2.new(1, 0, 1, 0), BackgroundColor3 = Color3.fromRGB(7, 7, 10),
+			BorderSizePixel = 0, ZIndex = 100, Parent = Gui,
+		})
+		local title = Create("TextLabel", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -56),
+			Size = UDim2.new(0, 400, 0, 40), BackgroundTransparency = 1, ZIndex = 101,
+			Font = Enum.Font.GothamBold, TextSize = 30, Text = windowName,
+			TextColor3 = Color3.new(1, 1, 1), TextTransparency = 1, Parent = splash,
+		})
+		local splashTag = Create("TextLabel", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, -28),
+			Size = UDim2.new(0, 400, 0, 16), BackgroundTransparency = 1, ZIndex = 101,
+			Font = Enum.Font.GothamMedium, TextSize = 12, Text = tagline,
+			TextColor3 = Color3.fromRGB(150, 150, 160), TextTransparency = 1, Parent = splash,
+		})
+		local barBg = Create("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 8),
+			Size = UDim2.new(0, 260, 0, 5), BackgroundColor3 = Color3.fromRGB(26, 26, 34),
+			BorderSizePixel = 0, ZIndex = 101, Parent = splash,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		local fill = Create("Frame", {
+			Size = UDim2.new(0, 0, 1, 0), BorderSizePixel = 0, ZIndex = 102, Parent = barBg,
+		}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
+		fill.BackgroundColor3 = Theme.Accent
+		local stageLabel = Create("TextLabel", {
+			AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.new(0.5, 0, 0.5, 30),
+			Size = UDim2.new(0, 400, 0, 14), BackgroundTransparency = 1, ZIndex = 101,
+			Font = Enum.Font.GothamMedium, TextSize = 11, Text = "Loading assets...",
+			TextColor3 = Color3.fromRGB(130, 130, 140), Parent = splash,
+		})
+		Tween(title, 0.5, { TextTransparency = 0 })
+		Tween(splashTag, 0.5, { TextTransparency = 0 })
+		TweenService:Create(fill, TweenInfo.new(2.2, Enum.EasingStyle.Quint, Enum.EasingDirection.InOut),
+			{ Size = UDim2.new(1, 0, 1, 0) }):Play()
+		task.spawn(function()
+			local stages = { "Loading assets...", "Building interface...", "Applying theme...", "Finalizing..." }
+			for _, s in ipairs(stages) do
+				stageLabel.Text = s
+				task.wait(0.55)
+			end
+			Fade(splash, true, 0.4)
+			task.wait(0.45)
+			splash:Destroy()
+			done()
+		end)
+	end
+
+	-------------------- Go! --------------------
+	-- splash is opt-in: boot straight into the hub unless Splash = true
+	if options.Splash == true then
+		playSplash(function() Window:SetVisible(true) end)
+	else
+		Window:SetVisible(true)
+	end
+
+	-- optional "What's new" changelog card — shows ONCE per version you bump.
+	-- CreateWindow({ Changelog = { Version = "1.1.0", Lines = {"added x", "fixed y"} } })
+	if options.Changelog then
+		local cl = options.Changelog
+		local ver = tostring(cl.Version or self.Version)
+		local seenVer
+		if type(readfile) == "function" and type(isfile) == "function"
+		and FileSafe(isfile, CONFIG_FOLDER .. "/seenversion.txt") then
+			seenVer = FileSafe(readfile, CONFIG_FOLDER .. "/seenversion.txt")
+		else
+			seenVer = memoryConfigs.__seenVersion
+		end
+		if seenVer ~= ver then
+			task.delay(1.1, function()
+				if not Window._main or not Window._main.Parent then return end
+				Window:ShowChangelog(cl.Title, cl.Lines or {}, ver)
+				FileSafe(writefile, CONFIG_FOLDER .. "/seenversion.txt", ver)
+				memoryConfigs.__seenVersion = ver
+			end)
+		end
+	end
+
+	return Window
+end
+
+return Crystalized
