@@ -712,21 +712,21 @@ RunService.RenderStepped:Connect(function()
 end)
 
 --============================================================--
--- NOTIFICATIONS (bottom-right stack: compact, modern, lightweight)
+-- NOTIFICATIONS (ultra-compact bottom-right stack: tiny, sleek, lightweight)
 --============================================================--
 local NotifHolder = Create("Frame", {
 	Name = "Notifications", AnchorPoint = Vector2.new(1, 1), ZIndex = 60,
-	Position = UDim2.new(1, -14, 1, -14), Size = UDim2.new(0, 220, 1, -28),
-	BackgroundTransparency = 1, Parent = Gui,
+	Position = UDim2.new(1, -12, 1, -12), Size = UDim2.new(0, 155, 0, 0),
+	AutomaticSize = Enum.AutomaticSize.Y, BackgroundTransparency = 1, Parent = Gui,
 }, {
 	Create("UIListLayout", {
-		Padding = UDim.new(0, 6), SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 4), SortOrder = Enum.SortOrder.LayoutOrder,
 		VerticalAlignment = Enum.VerticalAlignment.Bottom,
 	}),
 })
 
--- notification stack cap: at most 5 toasts on screen, the rest wait in a queue
-local NOTIF_CAP = 5
+-- notification stack cap: at most 3 toasts on screen, the rest wait in a queue
+local NOTIF_CAP = 3
 local notifActive, notifQueue = 0, {}
 
 local function NotifyNow(opts)
@@ -741,12 +741,12 @@ local function NotifyNow(opts)
 		Position = UDim2.new(1, 30, 0, 0), ClipsDescendants = true,
 		BorderSizePixel = 0, Parent = wrapper,
 	}, {
-		Create("UICorner", { CornerRadius = UDim.new(0, 7) }),
+		Create("UICorner", { CornerRadius = UDim.new(0, 5) }),
 		Create("UIPadding", {
-			PaddingTop = UDim.new(0, 8), PaddingBottom = UDim.new(0, 8),
-			PaddingLeft = UDim.new(0, 12), PaddingRight = UDim.new(0, 10),
+			PaddingTop = UDim.new(0, 4), PaddingBottom = UDim.new(0, 4),
+			PaddingLeft = UDim.new(0, 9), PaddingRight = UDim.new(0, 7),
 		}),
-		Create("UIListLayout", { Padding = UDim.new(0, 2), SortOrder = Enum.SortOrder.LayoutOrder }),
+		Create("UIListLayout", { Padding = UDim.new(0, 1), SortOrder = Enum.SortOrder.LayoutOrder }),
 	})
 	Paint(card, "BackgroundColor3", "Topbar")
 	local stroke = Create("UIStroke", { Thickness = 1, Transparency = 0.5, Parent = card })
@@ -766,7 +766,7 @@ local function NotifyNow(opts)
 
 	-- slim accent bar on the left
 	local bar = Create("Frame", {
-		Size = UDim2.new(0, 2.5, 1, -10), Position = UDim2.new(0, 0, 0, 5),
+		Size = UDim2.new(0, 2, 1, -6), Position = UDim2.new(0, 0, 0, 3),
 		BorderSizePixel = 0, Parent = card,
 	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
 	if tinfo then bar.BackgroundColor3 = tinfo.c
@@ -774,8 +774,8 @@ local function NotifyNow(opts)
 
 	-- slim progress bar along the bottom of the toast
 	local ptrack = Create("Frame", {
-		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 6, 1, -2),
-		Size = UDim2.new(1, -12, 0, 2), BackgroundTransparency = 0.8,
+		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 4, 1, -1),
+		Size = UDim2.new(1, -8, 0, 1.5), BackgroundTransparency = 0.8,
 		BorderSizePixel = 0, Parent = wrapper, ZIndex = 7,
 	}, { Create("UICorner", { CornerRadius = UDim.new(1, 0) }) })
 	ptrack.BackgroundColor3 = Color3.new(0, 0, 0)
@@ -789,8 +789,8 @@ local function NotifyNow(opts)
 		Paint(pfill, "BackgroundColor3", "Accent")
 	end
 	local title = Create("TextLabel", {
-		Size = UDim2.new(1, 0, 0, 14), BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold, TextSize = 11, TextXAlignment = Enum.TextXAlignment.Left,
+		Size = UDim2.new(1, 0, 0, 12), BackgroundTransparency = 1,
+		Font = Enum.Font.GothamBold, TextSize = 10, TextXAlignment = Enum.TextXAlignment.Left,
 		Text = tostring(opts.Title or "Notification"), LayoutOrder = 1, Parent = card,
 	})
 	if tinfo then title.TextColor3 = tinfo.c
@@ -798,7 +798,7 @@ local function NotifyNow(opts)
 	if opts.Content and opts.Content ~= "" then
 		local body = Create("TextLabel", {
 			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
-			BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 10,
+			BackgroundTransparency = 1, Font = Enum.Font.GothamMedium, TextSize = 9,
 			TextXAlignment = Enum.TextXAlignment.Left, TextWrapped = true,
 			Text = tostring(opts.Content), LayoutOrder = 2, Parent = card,
 		})
@@ -1506,7 +1506,7 @@ local function ShowPremiumPrompt(featureName)
 
 	local title = Create("TextLabel", {
 		Position = UDim2.new(0, 0, 0, 52), Size = UDim2.new(1, 0, 0, 18), BackgroundTransparency = 1,
-		Font = Enum.Font.GothamBold, TextSize = 16, Text = "Crystalized Premium",
+		Font = Enum.Font.GothamBold, TextSize = 16, Text = "Crystalized PRO",
 		TextColor3 = Theme.Gold, ZIndex = 92, Parent = card,
 	})
 	-- feature name chip
@@ -1514,7 +1514,7 @@ local function ShowPremiumPrompt(featureName)
 		AnchorPoint = Vector2.new(0.5, 0),
 		Position = UDim2.new(0.5, 0, 0, 75), AutomaticSize = Enum.AutomaticSize.X,
 		Size = UDim2.new(0, 0, 0, 20), BackgroundTransparency = 1,
-		Font = Enum.Font.GothamSemibold, TextSize = 11, Text = "PRO ACCESS  -  " .. tostring(featureName or "Feature"),
+		Font = Enum.Font.GothamSemibold, TextSize = 11, Text = "Locked Feature: " .. tostring(featureName or "Feature"),
 		TextColor3 = Color3.fromRGB(255, 220, 120), ZIndex = 92, Parent = card,
 	}, {
 		Create("UIPadding", { PaddingLeft = UDim.new(0, 10), PaddingRight = UDim.new(0, 10) }),
@@ -1524,7 +1524,7 @@ local function ShowPremiumPrompt(featureName)
 	local sub = Create("TextLabel", {
 		Position = UDim2.new(0, 24, 0, 100), Size = UDim2.new(1, -48, 0, 14), BackgroundTransparency = 1,
 		Font = Enum.Font.GothamMedium, TextSize = 11,
-		Text = "Unlock every pro feature with a single license key.",
+		Text = "Enter your key below to unlock this feature and all other premium perks.",
 		ZIndex = 92, Parent = card,
 	})
 	Paint(sub, "TextColor3", "SubText")
@@ -1532,7 +1532,7 @@ local function ShowPremiumPrompt(featureName)
 	local keybox = Create("TextBox", {
 		Position = UDim2.new(0, 22, 0, 124), Size = UDim2.new(1, -44, 0, 32),
 		BorderSizePixel = 0, Font = Enum.Font.GothamSemibold, TextSize = 12, Text = "",
-		TextXAlignment = Enum.TextXAlignment.Left, PlaceholderText = "Enter key... (demo: crystal123)",
+		TextXAlignment = Enum.TextXAlignment.Left, PlaceholderText = "Paste license key here...",
 		ClearTextOnFocus = false, ZIndex = 92, Parent = card,
 	}, {
 		Create("UICorner", { CornerRadius = UDim.new(0, 7) }),
@@ -1564,7 +1564,7 @@ local function ShowPremiumPrompt(featureName)
 	local buyBtn = Create("TextButton", {
 		AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 22, 1, -16),
 		Size = UDim2.new(0.5, -27, 0, 32),
-		Text = "Buy Key  ->", Font = Enum.Font.GothamBold, TextSize = 12,
+		Text = "Get Key ->", Font = Enum.Font.GothamBold, TextSize = 12,
 		BackgroundColor3 = Color3.fromRGB(45, 38, 22), TextColor3 = Theme.Gold,
 		AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 92, Parent = card,
 	}, {
@@ -1573,7 +1573,7 @@ local function ShowPremiumPrompt(featureName)
 	})
 	local redeemBtn = Create("TextButton", {
 		AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, -22, 1, -16),
-		Size = UDim2.new(0.5, -27, 0, 32), Text = "Redeem Key",
+		Size = UDim2.new(0.5, -27, 0, 32), Text = "Redeem",
 		Font = Enum.Font.GothamBold, TextSize = 12, TextColor3 = Color3.fromRGB(34, 25, 4),
 		BackgroundColor3 = Theme.Gold, AutoButtonColor = false, BorderSizePixel = 0, ZIndex = 92, Parent = card,
 	}, { Create("UICorner", { CornerRadius = UDim.new(0, 7) }) })
@@ -1609,7 +1609,7 @@ local function ShowPremiumPrompt(featureName)
 		if type(setclipboard) == "function" then
 			pcall(setclipboard, Crystalized.BuyLink)
 			showInfo("<font color=\"#7ce29b\">Copied!</font> <b>" .. Crystalized.BuyLink ..
-				"</b> is in your clipboard - paste into your browser to buy.")
+				"</b> is in your clipboard - paste into browser to get a key.")
 		else
 			showInfo("Go to: <b>" .. Crystalized.BuyLink .. "</b>")
 		end
@@ -1634,7 +1634,7 @@ local function ShowPremiumPrompt(featureName)
 		else
 			task.spawn(shake)
 			keybox.Text = ""
-			keybox.PlaceholderText = "Invalid key!"
+			keybox.PlaceholderText = "Invalid or expired key!"
 		end
 	end
 	redeemBtn.MouseButton1Click:Connect(tryRedeem)
@@ -3045,7 +3045,10 @@ function Crystalized:CreateWindow(options)
 	}, {
 		Create("UICorner", { CornerRadius = UDim.new(0, 10) }),
 		Create("UIScale", { Scale = startScale }),
-		Create("UIStroke", { Thickness = 1, Transparency = 0.65 }),
+		Create("UIStroke", {
+			Thickness = 1, Color = Color3.fromRGB(255, 255, 255), Transparency = 0.88,
+			ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+		}),
 	})
 	Paint(main, "BackgroundColor3", "Background")
 	Window._main = main
@@ -3150,17 +3153,17 @@ function Crystalized:CreateWindow(options)
 		local col = isRainbow and Color3.new(1, 1, 1) or ResolveColor(t.Color or t.Style) or Theme.Accent
 		local useAccent = (not isRainbow) and ResolveColor(t.Color or t.Style) == nil
 		local pill = Create("TextLabel", {
-			AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 0, 15),
-			BackgroundTransparency = 0.88, BorderSizePixel = 0,
-			Font = Enum.Font.GothamBold, TextSize = 9, Text = tostring(t.Name or "TAG"),
+			AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.new(0, 0, 0, 18),
+			BackgroundTransparency = 0.82, BorderSizePixel = 0,
+			Font = Enum.Font.GothamBold, TextSize = 11, Text = tostring(t.Name or "TAG"),
 			LayoutOrder = 10, Parent = titleRow,
 		}, {
 			Create("UICorner", { CornerRadius = UDim.new(0, 4) }),
-			Create("UIPadding", { PaddingLeft = UDim.new(0, 5), PaddingRight = UDim.new(0, 5) }),
+			Create("UIPadding", { PaddingLeft = UDim.new(0, 7), PaddingRight = UDim.new(0, 7) }),
 			-- crisp integrated badge, no harsh AI border
 		})
 		pill.BackgroundColor3 = col
-		pill.TextColor3 = Lighten(col, 0.45)
+		pill.TextColor3 = Lighten(col, 0.5)
 		if useAccent then table.insert(accentTags, pill) end
 		if isRainbow then
 			local rg = Create("UIGradient", {
@@ -3715,11 +3718,12 @@ function Crystalized:CreateWindow(options)
 		refreshAvatar()
 	end)
 
-	-- docked to the main window's RIGHT edge, follows when you drag the hub
+	-- docked to the main window's RIGHT edge, vertically centered in the middle right of the UI
 	RunService.RenderStepped:Connect(function()
 		if not dummy.Visible then return end
 		local ap, sz = main.AbsolutePosition, main.AbsoluteSize
-		dummy.Position = UDim2.fromOffset(ap.X + sz.X + 12, ap.Y + 46)
+		local dummyH = dummy.AbsoluteSize.Y
+		dummy.Position = UDim2.fromOffset(ap.X + sz.X + 12, ap.Y + (sz.Y - dummyH) * 0.5)
 	end)
 
 	-- live sync: reads the SAME flags your real ESP uses
@@ -4016,17 +4020,17 @@ function Crystalized:CreateWindow(options)
 		-- page = scrolling frame with generous breathing margins on the right
 		local page = Create("ScrollingFrame", {
 			Size = UDim2.new(1, 0, 1, 0), BackgroundTransparency = 1, BorderSizePixel = 0,
-			ScrollBarThickness = 2, ScrollingDirection = Enum.ScrollingDirection.Y,
+			ScrollBarThickness = 3, ScrollingDirection = Enum.ScrollingDirection.Y,
 			AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(0, 0, 0, 0),
 			Visible = false, Parent = pages,
 		}, { Create("UIPadding", {
-			PaddingTop = UDim.new(0, 12), PaddingBottom = UDim.new(0, 16),
-			PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 20),
+			PaddingTop = UDim.new(0, 14), PaddingBottom = UDim.new(0, 16),
+			PaddingLeft = UDim.new(0, 14), PaddingRight = UDim.new(0, 24),
 		}) })
 		Paint(page, "ScrollBarImageColor3", "Accent")
 		page.ScrollBarImageTransparency = 0.25
 		local cols = Create("Frame", {
-			Size = UDim2.new(1, -8, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
+			Size = UDim2.new(1, 0, 0, 0), AutomaticSize = Enum.AutomaticSize.Y,
 			BackgroundTransparency = 1, Parent = page,
 		}, {
 			Create("UIListLayout", {
